@@ -1,6 +1,8 @@
 #include "canvas.h"
 #include "map.h"
 
+#define UPSCALE 0.1
+
 CanvasConfig config = { 
   .title = "LASERINATOR",
   .capture_mouse = 1, 
@@ -31,6 +33,10 @@ int main() {
 
   Model* wall_m = model_create("cube", (Material) { WHITE, 0.5, 1.6 });
 
+  // FBO
+  u32 lowres_fbo = canvas_create_FBO(cam.width * UPSCALE, cam.height * UPSCALE, GL_NEAREST, GL_NEAREST);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
   while (!glfwWindowShouldClose(cam.window)) {
     canvas_set_pnt_lig(shader, (PntLig) { WHITE, { cam.pos[0], cam.pos[1], cam.pos[2] }, 1, 0.22, 0.2 }, 0);
     glUseProgram(shader);
@@ -52,6 +58,10 @@ int main() {
     glm_translate(wall_m->model, VEC3(0, 3, 0));
     glm_scale(wall_m->model, VEC3((u8) LEN(map), 0.1, (u8) LEN(map[0])));
     model_draw(wall_m, shader);
+
+    // Lowres
+    glBlitNamedFramebuffer(0, lowres_fbo, 0, 0, cam.width, cam.height, 0, 0, cam.width * UPSCALE, cam.height * UPSCALE, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    glBlitNamedFramebuffer(lowres_fbo, 0, 0, 0, cam.width * UPSCALE, cam.height * UPSCALE, 0, 0, cam.width, cam.height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
     // Finish
     glfwSwapBuffers(cam.window);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
