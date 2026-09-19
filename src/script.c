@@ -24,6 +24,7 @@ Camera cam = {
 u8 laser_enabled = 0;
 vec3 laser_pos;
 f32 laser_rot;
+f32 laser_size;
 
 void camera_compute_movement(Camera* cam, u8 shader);
 void compute_keys(Camera* cam);
@@ -84,7 +85,7 @@ int main() {
       model_bind(laser_m, shader);
       glm_translate(laser_m->model, laser_pos);
       glm_rotate(laser_m->model, laser_rot, VEC3(0, -1, 0));
-      glm_scale(laser_m->model, VEC3(100, 0.1, 0.1));
+      glm_scale(laser_m->model, VEC3(laser_size, 0.1, 0.1));
       glm_translate(laser_m->model, VEC3(0, 0, -0.35));
       model_draw(laser_m, shader);
     }
@@ -159,4 +160,15 @@ void compute_keys(Camera* cam) {
   glm_vec3_add(laser_pos, front, laser_pos);
   glm_vec3_normalize(front);
   laser_rot = atan2(front[2], front[0]);
+
+  vec3 pos;
+  glm_vec3_scale(front, 0.05, front);
+  VEC3_COPY(laser_pos, pos);
+
+  while (1) {
+    glm_vec3_add(pos, front, pos);
+    if (map[(u8) pos[2]][(u8) pos[0]] == 1) break;
+  }
+
+  laser_size = sqrt(pow(fabs(pos[0] - laser_pos[0]), 2) + pow(fabs(pos[2] - laser_pos[2]), 2));
 }
