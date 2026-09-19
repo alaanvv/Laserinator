@@ -79,6 +79,9 @@ int main() {
 }
 
 void camera_compute_movement(Camera* cam, u8 shader) {
+  f32 _x = cam->pos[0];
+  f32 _z = cam->pos[2];
+
   vec3 prompted_move = {
     (glfwGetKey(cam->window, GLFW_KEY_D) == GLFW_PRESS ? cam->speed / cam->fps : 0) + (glfwGetKey(cam->window, GLFW_KEY_A) == GLFW_PRESS ? -cam->speed / cam->fps : 0),
     0,
@@ -95,6 +98,11 @@ void camera_compute_movement(Camera* cam, u8 shader) {
 
     glm_vec3_add(cam->pos, lateral,  cam->pos);
     glm_vec3_add(cam->pos, frontal,  cam->pos);
+
+    if (map[(u8) _z][(u8) _x + 1] && ((u8) (cam->pos[0] + 0.1)) == ((u8) _x + 1)) cam->pos[0] = _x;
+    if (map[(u8) _z][(u8) _x - 1] && ((u8) (cam->pos[0] - 0.1)) == ((u8) _x - 1)) cam->pos[0] = _x;
+    if (map[(u8) _z + 1][(u8) _x] && ((u8) (cam->pos[2] + 0.1)) == ((u8) _z + 1)) cam->pos[2] = _z;
+    if (map[(u8) _z - 1][(u8) _x] && ((u8) (cam->pos[2] - 0.1)) == ((u8) _z - 1)) cam->pos[2] = _z;
 
     glUseProgram(shader);
     generate_view_mat(cam, shader);
