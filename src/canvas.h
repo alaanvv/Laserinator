@@ -383,7 +383,7 @@ GLenum texture(c8* name) {
 
 typedef struct {
   vec3 col;
-  f64  amb, dif;
+  f64  amb, dif, alp;
   GLenum tex, emt;
   u8 lig;
 } Material;
@@ -392,6 +392,7 @@ void canvas_set_material(u32 shader, Material mat) {
   canvas_uni3f(shader, "MAT.COL", mat.col[0], mat.col[1], mat.col[2]);
   canvas_uni1f(shader, "MAT.AMB", mat.amb);
   canvas_uni1f(shader, "MAT.DIF", mat.dif);
+  canvas_uni1f(shader, "MAT.ALP", mat.alp);
   canvas_uni1i(shader, "MAT.S_DIF", mat.tex >= GL_TEXTURE0 ? (mat.tex - GL_TEXTURE0) : 29);
   canvas_uni1i(shader, "MAT.S_EMT", mat.emt >= GL_TEXTURE0 ? (mat.emt - GL_TEXTURE0) : 30);
   canvas_uni1i(shader, "MAT.LIG", mat.lig);

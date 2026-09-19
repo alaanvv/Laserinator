@@ -34,7 +34,9 @@ int main() {
   u32 hud_shader = shader_create_program("hud");
   generate_ortho_mat(&cam, hud_shader);
 
-  Model* wall_m = model_create("cube", (Material) { WHITE, 0.5, 1.6 });
+  Model* wall_m = model_create("cube", (Material) { WHITE, 0.5, 1.6, 1 });
+  Model* pillar_inactive_m = model_create("cube", (Material) { DEEP_RED, 0.5, 1.6, 0.3 });
+  Model* pillar_active_m = model_create("cube", (Material) { DEEP_GREEN, 0.5, 1.6, 0.3 });
 
   // FBO
   u32 lowres_fbo = canvas_create_FBO(cam.width * UPSCALE, cam.height * UPSCALE, GL_NEAREST, GL_NEAREST);
@@ -43,14 +45,6 @@ int main() {
   while (!glfwWindowShouldClose(cam.window)) {
     canvas_set_pnt_lig(shader, (PntLig) { WHITE, { cam.pos[0], cam.pos[1], cam.pos[2] }, 1, 0.22, 0.2 }, 0);
     glUseProgram(shader);
-    for (u8 y = 0; y < LEN(map); y++)
-      for (u8 x = 0; x < LEN(map[0]); x++) {
-        if (!map[y][x]) continue;
-        model_bind(wall_m, shader);
-        glm_translate(wall_m->model, VEC3(x, 0, y));
-        glm_scale(wall_m->model, VEC3(1, 3, 1));
-        model_draw(wall_m, shader);
-      }
 
     model_bind(wall_m, shader);
     glm_translate(wall_m->model, VEC3(0, 0, 0));
@@ -62,9 +56,31 @@ int main() {
     glm_scale(wall_m->model, VEC3((u8) LEN(map), 0.1, (u8) LEN(map[0])));
     model_draw(wall_m, shader);
 
+    for (u8 y = 0; y < LEN(map); y++)
+      for (u8 x = 0; x < LEN(map[0]); x++) {
+        if (map[y][x] != 1) continue;
+
+        model_bind(wall_m, shader);
+        glm_translate(wall_m->model, VEC3(x, 0, y));
+        glm_scale(wall_m->model, VEC3(1, 3, 1));
+        model_draw(wall_m, shader);
+      }
+
+    for (u8 y = 0; y < LEN(map); y++)
+      for (u8 x = 0; x < LEN(map[0]); x++) {
+        if (map[y][x] != 2 && map[y][x] != 3) continue;
+
+        Model* model = map[y][x] == 2 ? pillar_inactive_m : pillar_active_m;
+        model_bind(model, shader);
+        glm_translate(model->model, VEC3(x, 0, y));
+        glm_scale(model->model, VEC3(1, 3, 1));
+        model_draw(model, shader);
+      }
+
     // Lowres
     glBlitNamedFramebuffer(0, lowres_fbo, 0, 0, cam.width, cam.height, 0, 0, cam.width * UPSCALE, cam.height * UPSCALE, GL_COLOR_BUFFER_BIT, GL_NEAREST);
     glBlitNamedFramebuffer(lowres_fbo, 0, 0, 0, cam.width * UPSCALE, cam.height * UPSCALE, 0, 0, cam.width, cam.height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
     // Finish
     glfwSwapBuffers(cam.window);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

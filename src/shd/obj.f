@@ -5,7 +5,7 @@
 struct Material {
   vec3 COL;
   sampler2D S_DIF, S_EMT;
-  float AMB, DIF;
+  float AMB, DIF, ALP;
   int LIG;
 };
 
@@ -117,5 +117,5 @@ void main() {
     _color = MAT.COL;
   }
 
-  color = vec4(_color, 1);
+  color = vec4(_color, MAT.ALP);
 }
