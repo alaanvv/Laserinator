@@ -21,7 +21,12 @@ Camera cam = {
   .speed = 3
 };
 
+u8 laser_enabled = 0;
+vec3 laser_pos;
+f32 laser_rot;
+
 void camera_compute_movement(Camera* cam, u8 shader);
+void compute_keys(Camera* cam);
 
 // ---
 
@@ -37,6 +42,8 @@ int main() {
   Model* wall_m = model_create("cube", (Material) { WHITE, 0.5, 1.6, 1 });
   Model* pillar_inactive_m = model_create("cube", (Material) { DEEP_RED, 0.5, 1.6, 0.3 });
   Model* pillar_active_m = model_create("cube", (Material) { DEEP_GREEN, 0.5, 1.6, 0.3 });
+  Model* laser_shooter_m = model_create("cube", (Material) { DEEP_PURPLE, 0.5, 1.6, 1 });
+  Model* laser_m = model_create("cube", (Material) { DEEP_RED, 0.5, 1.6, 0.2, .lig = 1 });
 
   // FBO
   u32 lowres_fbo = canvas_create_FBO(cam.width * UPSCALE, cam.height * UPSCALE, GL_NEAREST, GL_NEAREST);
@@ -66,6 +73,22 @@ int main() {
         model_draw(wall_m, shader);
       }
 
+    if (laser_enabled) {
+      model_bind(laser_shooter_m, shader);
+      glm_translate(laser_shooter_m->model, laser_pos);
+      glm_rotate(laser_shooter_m->model, laser_rot, VEC3(0, -1, 0));
+      glm_translate(laser_shooter_m->model, VEC3(-0.1, -1, -0.20));
+      glm_scale(laser_shooter_m->model, VEC3(0.5, 1.5, 0.5));
+      model_draw(laser_shooter_m, shader);
+
+      model_bind(laser_m, shader);
+      glm_translate(laser_m->model, laser_pos);
+      glm_rotate(laser_m->model, laser_rot, VEC3(0, -1, 0));
+      glm_scale(laser_m->model, VEC3(100, 0.1, 0.1));
+      glm_translate(laser_m->model, VEC3(0, 0, -0.35));
+      model_draw(laser_m, shader);
+    }
+
     for (u8 y = 0; y < LEN(map); y++)
       for (u8 x = 0; x < LEN(map[0]); x++) {
         if (map[y][x] != 2 && map[y][x] != 3) continue;
@@ -86,6 +109,7 @@ int main() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     camera_handle_inputs(&cam, shader);
     camera_compute_movement(&cam, shader);
+    compute_keys(&cam);
     glfwPollEvents();
     update_fps(&cam);
   }
@@ -123,4 +147,16 @@ void camera_compute_movement(Camera* cam, u8 shader) {
     glUseProgram(shader);
     generate_view_mat(cam, shader);
   };
+}
+
+void compute_keys(Camera* cam) {
+  if (glfwGetKey(cam->window, GLFW_KEY_E) != GLFW_PRESS) return;
+
+  laser_enabled = 1;
+  VEC3_COPY(cam->pos, laser_pos);
+  laser_pos[1] = 1;
+  vec3 front = {cam->dir[0], 0, cam->dir[2]};
+  glm_vec3_add(laser_pos, front, laser_pos);
+  glm_vec3_normalize(front);
+  laser_rot = atan2(front[2], front[0]);
 }
