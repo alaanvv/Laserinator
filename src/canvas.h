@@ -740,28 +740,6 @@ void play_audio(c8* name) {
 
 // Camera
 
-void camera_compute_movement(Camera* cam, u8 shader) {
-  vec3 prompted_move = {
-    (glfwGetKey(cam->window, GLFW_KEY_D) == GLFW_PRESS ? cam->speed / cam->fps : 0) + (glfwGetKey(cam->window, GLFW_KEY_A) == GLFW_PRESS ? -cam->speed / cam->fps : 0),
-    (glfwGetKey(cam->window, GLFW_KEY_E) == GLFW_PRESS ? cam->speed / cam->fps : 0) + (glfwGetKey(cam->window, GLFW_KEY_Q) == GLFW_PRESS ? -cam->speed / cam->fps : 0),
-    (glfwGetKey(cam->window, GLFW_KEY_W) == GLFW_PRESS ? cam->speed / cam->fps : 0) + (glfwGetKey(cam->window, GLFW_KEY_S) == GLFW_PRESS ? -cam->speed / cam->fps : 0)
-  };
-
-  if (prompted_move[0] || prompted_move[1] || prompted_move[2]) {
-    vec3 lateral  = { 0, 0, 0 };
-    glm_vec3_scale(cam->rig, prompted_move[0], lateral);
-    vec3 frontal  = { 0, 0, 0 };
-    glm_vec3_scale(cam->dir, prompted_move[2], frontal);
-    vec3 vertical = { 0, prompted_move[1], 0 };
-
-    glm_vec3_add(cam->pos, lateral,  cam->pos);
-    glm_vec3_add(cam->pos, frontal,  cam->pos);
-    glm_vec3_add(cam->pos, vertical, cam->pos);
-    glUseProgram(shader);
-    generate_view_mat(cam, shader);
-  };
-}
-
 void camera_compute_direction(Camera* cam, u8 shader) {
   static vec2 mouse;
   f64 x, y;
@@ -785,7 +763,6 @@ void camera_compute_direction(Camera* cam, u8 shader) {
 
 void camera_handle_inputs(Camera* cam, u32 shader) {
   if (glfwGetKey(cam->window, GLFW_KEY_ESCAPE) == GLFW_PRESS) glfwSetWindowShouldClose(cam->window, 1);
-  camera_compute_movement(cam, shader);
   camera_compute_direction(cam, shader);
 }
 

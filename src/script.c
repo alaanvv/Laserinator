@@ -12,13 +12,16 @@ CanvasConfig config = {
 };
 
 Camera cam = { 
+  .pos = {1.5, 2, 2.5},
   .fov = PI4, 
   .near_plane = 0.01, 
   .far_plane = 100, 
-  .sensitivity = 0.001, 
+  .sensitivity = 0.003,
   .camera_lock = PI2 * 0.9,
   .speed = 3
 };
+
+void camera_compute_movement(Camera* cam, u8 shader);
 
 // ---
 
@@ -66,10 +69,34 @@ int main() {
     glfwSwapBuffers(cam.window);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     camera_handle_inputs(&cam, shader);
+    camera_compute_movement(&cam, shader);
     glfwPollEvents();
     update_fps(&cam);
   }
 
   glfwTerminate();
   return 0;
+}
+
+void camera_compute_movement(Camera* cam, u8 shader) {
+  vec3 prompted_move = {
+    (glfwGetKey(cam->window, GLFW_KEY_D) == GLFW_PRESS ? cam->speed / cam->fps : 0) + (glfwGetKey(cam->window, GLFW_KEY_A) == GLFW_PRESS ? -cam->speed / cam->fps : 0),
+    0,
+    (glfwGetKey(cam->window, GLFW_KEY_W) == GLFW_PRESS ? cam->speed / cam->fps : 0) + (glfwGetKey(cam->window, GLFW_KEY_S) == GLFW_PRESS ? -cam->speed / cam->fps : 0)
+  };
+
+  if (prompted_move[0] || prompted_move[1] || prompted_move[2]) {
+    vec3 lateral  = { 0, 0, 0 };
+    glm_vec3_scale(cam->rig, prompted_move[0], lateral);
+    vec3 frontal  = { 0, 0, 0 };
+    vec3 front = {cam->dir[0], 0, cam->dir[2]};
+    glm_vec3_normalize(front);
+    glm_vec3_scale(front, prompted_move[2], frontal);
+
+    glm_vec3_add(cam->pos, lateral,  cam->pos);
+    glm_vec3_add(cam->pos, frontal,  cam->pos);
+
+    glUseProgram(shader);
+    generate_view_mat(cam, shader);
+  };
 }
