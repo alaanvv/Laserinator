@@ -14,7 +14,7 @@ out vec2 tex;
 
 void main() {
   pos = vec3(MODEL * vec4(aPos, 1));
-  nrm = aNrm;
+  nrm = mat3(transpose(inverse(MODEL))) * aNrm;
   tex = vec2((aTex.x + TILE) / max(TILE_AMOUNT, 1), aTex.y);
   gl_Position = PROJ * VIEW * MODEL * vec4(aPos, 1);
 }

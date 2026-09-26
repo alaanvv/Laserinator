@@ -1,8 +1,9 @@
 #include "canvas.h"
 #include "map.h"
 
-#define UPSCALE   0.1
-#define MAX_BEAMS 100
+#define UPSCALE     0.1
+#define MAX_BEAMS   100
+#define MAX_MIRRORS 100
 
 void camera_compute_movement(Camera* cam, u8 shader);
 void char_press(GLFWwindow*, u32);
@@ -40,9 +41,16 @@ typedef struct {
   f32 rot, size;
 } Beam;
 
-Laser laser = { 0 };
+typedef struct {
+  vec3 pos;
+  f32 rot;
+} Mirror;
 
+Laser laser = { 0 };
 Beam beams[MAX_BEAMS];
+Mirror mirrors[MAX_MIRRORS];
+
+u8 mirror_c = 0;
 
 // ---
 
@@ -59,6 +67,7 @@ int main() {
   Model* mo_pillar_on  = model_create("cube",  (Material) { DEEP_GREEN,  0.5, 1.6, 0.3, .lig = 0 });
   Model* mo_laser      = model_create("tower", (Material) { DEEP_PURPLE, 0.5, 1.6, 1.0, .lig = 0 });
   Model* mo_beam       = model_create("tower", (Material) { DEEP_RED,    0.5, 1.6, 0.2, .lig = 1 });
+  Model* mo_mirror     = model_create("tower", (Material) { GRAY,        0.5, 1.6, 1.0, .lig = 0 });
 
   u32 lowres_fbo = canvas_create_FBO(cam.width * UPSCALE, cam.height * UPSCALE, GL_NEAREST, GL_NEAREST);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -85,6 +94,24 @@ int main() {
         glm_scale(mo_wall->model, VEC3(1, 3, 1));
         model_draw(mo_wall, shader);
       }
+    }
+
+    if ((int) glfwGetTime() % 10 > 5) {
+        model_bind(mo_wall, shader);
+        glm_translate(mo_wall->model, VEC3(4, 0, 4));
+        model_draw(mo_wall, shader);
+    } else {
+        model_bind(mo_mirror, shader);
+        glm_translate(mo_mirror->model, VEC3(4.5, 0, 4.5));
+        model_draw(mo_mirror, shader);
+    }
+
+    for (u8 i = 0; i < mirror_c; i++) {
+      model_bind(mo_mirror, shader);
+      glm_translate(mo_mirror->model, mirrors[i].pos);
+      glm_rotate(mo_mirror->model, mirrors[i].rot, VEC3(0, -1, 0));
+      glm_scale(mo_mirror->model, VEC3(0.8, 1.5, 0.1));
+      model_draw(mo_mirror, shader);
     }
 
     if (laser.pos[0]) {
@@ -166,24 +193,35 @@ void camera_compute_movement(Camera* cam, u8 shader) {
 }
 
 void char_press(GLFWwindow* window, u32 key) {
-  if (key != 'e') return;
+  if (key == 'e') {
+    vec3 front = { cam.dir[0], 0, cam.dir[2] };
+    glm_vec3_normalize(front);
 
-  vec3 front = { cam.dir[0], 0, cam.dir[2] };
-  glm_vec3_normalize(front);
+    VEC3_COPY(VEC3(cam.pos[0], 1, cam.pos[2]), laser.pos);
+    glm_vec3_add(laser.pos, front, laser.pos);
 
-  VEC3_COPY(VEC3(cam.pos[0], 1, cam.pos[2]), laser.pos);
-  glm_vec3_add(laser.pos, front, laser.pos);
+    laser.rot = atan2(front[2], front[0]) - PI2;
 
-  laser.rot = atan2(front[2], front[0]) - PI2;
+    vec3 pos;
+    glm_vec3_scale(front, 0.05, front);
+    VEC3_COPY(laser.pos, pos);
 
-  vec3 pos;
-  glm_vec3_scale(front, 0.05, front);
-  VEC3_COPY(laser.pos, pos);
+    while (map[(u8) pos[2]][(u8) pos[0]] != 1)
+      glm_vec3_add(pos, front, pos);
 
-  while (map[(u8) pos[2]][(u8) pos[0]] != 1)
-    glm_vec3_add(pos, front, pos);
+    VEC3_COPY(laser.pos, beams[0].pos);
+    beams[0].rot = laser.rot;
+    beams[0].size = sqrt(pow(fabs(pos[0] - laser.pos[0]), 2) + pow(fabs(pos[2] - laser.pos[2]), 2));
+  }
 
-  VEC3_COPY(laser.pos, beams[0].pos);
-  beams[0].rot = laser.rot;
-  beams[0].size = sqrt(pow(fabs(pos[0] - laser.pos[0]), 2) + pow(fabs(pos[2] - laser.pos[2]), 2));
+  if (key == 'q') {
+    vec3 front = { cam.dir[0], 0, cam.dir[2] };
+    glm_vec3_normalize(front);
+
+    mirrors[mirror_c].rot = atan2(front[2], front[0]) - PI2;
+    VEC3_COPY(VEC3(cam.pos[0], 0, cam.pos[2]), mirrors[mirror_c].pos);
+    glm_vec3_add(mirrors[mirror_c].pos, front, mirrors[mirror_c].pos);
+
+    mirror_c++;
+  }
 }
