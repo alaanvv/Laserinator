@@ -51,6 +51,7 @@ Laser laser = { 0 };
 Beam beams[MAX_BEAMS];
 Mirror mirrors[MAX_MIRRORS];
 
+u8 beam_c = 0;
 u8 mirror_c = 0;
 
 // ---
@@ -112,12 +113,14 @@ int main() {
       glm_scale(mo_laser->model, VEC3(0.5, 1.5, 0.5));
       model_draw(mo_laser, shader);
 
-      model_bind(mo_beam, shader);
-      glm_translate(mo_beam->model, beams[0].pos);
-      glm_rotate(mo_beam->model, -PI2, VEC3(0, 0, 1));
-      glm_rotate(mo_beam->model, beams[0].rot, VEC3(1, 0, 0));
-      glm_scale(mo_beam->model, VEC3(0.1, beams[0].size, 0.1));
-      model_draw(mo_beam, shader);
+      for (u8 i = 0; i < beam_c; i++) {
+        model_bind(mo_beam, shader);
+        glm_translate(mo_beam->model, beams[i].pos);
+        glm_rotate(mo_beam->model, -PI2, VEC3(0, 0, 1));
+        glm_rotate(mo_beam->model, beams[i].rot, VEC3(1, 0, 0));
+        glm_scale(mo_beam->model, VEC3(0.1, beams[i].size, 0.1));
+        model_draw(mo_beam, shader);
+      }
     }
 
     for (u8 y = 0; y < LEN(map); y++) {
@@ -189,37 +192,59 @@ void camera_compute_movement(Camera* cam, u8 shader) {
   generate_view_mat(cam, shader);
 }
 
-void compute_laser() {
-    vec3 pos, front;
-    VEC3_COPY(VEC3(cos(laser.rot), 0, sin(laser.rot)), front);
-    VEC3_COPY(laser.pos, pos);
-    glm_vec3_scale(front, 0.05, front);
+void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
+  vec3 pos, front;
+  VEC3_COPY(origin, pos);
+  VEC3_COPY(VEC3(cos(rot), 0, sin(rot)), front);
+  glm_vec3_scale(front, 0.05, front);
 
-    while (map[(u8) pos[2]][(u8) pos[0]] != 1)
-      glm_vec3_add(pos, front, pos);
+  while (map[(u8) pos[2]][(u8) pos[0]] != 1)
+    glm_vec3_add(pos, front, pos);
 
-    VEC3_COPY(laser.pos, beams[0].pos);
-    beams[0].rot = laser.rot;
+  f32 closest_wall_dist = sqrt(pow(fabs(pos[0] - origin[0]), 2) + pow(fabs(pos[2] - origin[2]), 2));
+  f32 closest_mirror_dist = FLT_MAX;
+  f32 closest_mirror_rot;
+  vec3 closest_mirror_intersect;
+  u8 closest_mirror_i;
 
-    f32 closest_wall_dist = sqrt(pow(fabs(pos[0] - laser.pos[0]), 2) + pow(fabs(pos[2] - laser.pos[2]), 2));
-    f32 closest_mirror_dist = FLT_MAX;
+  for (u8 m = 0; m < mirror_c; m++) {
+    if (m == ignored_mirror) continue;
+    f32 beam_slope = tan(rot);
+    f32 mirror_slope = tan(mirrors[m].rot);
 
-    for (u8 m = 0; m < mirror_c; m++) {
-      f32 beam_slope = tan(beams[0].rot);
-      f32 mirror_slope = tan(mirrors[m].rot);
+    f32 beam_y_offset = origin[2] - (origin[0] * beam_slope);
+    f32 mirror_y_offset = mirrors[m].pos[2] - (mirrors[m].pos[0] * mirror_slope);
 
-      f32 beam_y_offset = beams[0].pos[2] - (beams[0].pos[0] * beam_slope);
-      f32 mirror_y_offset = mirrors[m].pos[2] - (mirrors[m].pos[0] * mirror_slope);
+    f32 x_intersect = (mirror_y_offset - beam_y_offset) / (beam_slope - mirror_slope);
+    f32 y_intersect = x_intersect * beam_slope + beam_y_offset;
 
-      f32 x_intersect = (mirror_y_offset - beam_y_offset) / (beam_slope - mirror_slope);
-      f32 y_intersect = x_intersect * beam_slope + beam_y_offset;
+    if (sqrt(pow(fabs(mirrors[m].pos[0] - x_intersect), 2) + pow(fabs(mirrors[m].pos[2] - y_intersect), 2)) > MIRROR_WIDTH / 2) continue;
 
-      if (sqrt(pow(fabs(mirrors[m].pos[0] - x_intersect), 2) + pow(fabs(mirrors[m].pos[2] - y_intersect), 2)) > MIRROR_WIDTH / 2) continue;
+    f32 dist = sqrt(pow(fabs(origin[0] - x_intersect), 2) + pow(fabs(origin[2] - y_intersect), 2));
 
-      closest_mirror_dist = MIN(closest_mirror_dist, sqrt(pow(fabs(laser.pos[0] - x_intersect), 2) + pow(fabs(laser.pos[2] - y_intersect), 2)));
+    if (dist < closest_mirror_dist) {
+      closest_mirror_dist = dist;
+      closest_mirror_rot = mirrors[m].rot;
+      closest_mirror_intersect[0] = x_intersect;
+      closest_mirror_intersect[1] = 1;
+      closest_mirror_intersect[2] = y_intersect;
+      closest_mirror_i = m;
     }
+  }
 
-    beams[0].size = MIN(closest_mirror_dist, closest_wall_dist);
+  VEC3_COPY(origin, beams[beam_c].pos);
+  beams[beam_c].rot = rot;
+  beams[beam_c].size = MIN(closest_mirror_dist, closest_wall_dist);
+  beam_c++;
+
+  if (closest_mirror_dist > closest_wall_dist) return;
+
+  create_beam(closest_mirror_intersect, 2 * closest_mirror_rot - rot, closest_mirror_i);
+}
+
+void compute_laser() {
+  beam_c = 0;
+  create_beam(laser.pos, laser.rot, -1);
 }
 
 void char_press(GLFWwindow* window, u32 key) {
