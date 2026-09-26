@@ -9,6 +9,7 @@
 void camera_compute_movement(Camera* cam, u8 shader);
 void char_press(GLFWwindow*, u32);
 void place_laser();
+void place_mirror();
 
 // ---
 
@@ -56,6 +57,12 @@ u8 beam_c = 0;
 u8 mirror_c = 0;
 
 u8 holding_laser = 0;
+u8 holding_mirror = 0;
+
+f32 base_fov = PI4;
+f32 fov_gain = PI4;
+f32 fov_gain_step = 0.03;
+f32 fov_gain_cur = 0;
 
 // ---
 
@@ -71,14 +78,22 @@ int main() {
   Model* mo_pillar_off = model_create("cube",  (Material) { DEEP_RED,    0.5, 1.6, 0.3, .lig = 0 });
   Model* mo_pillar_on  = model_create("cube",  (Material) { DEEP_GREEN,  0.5, 1.6, 0.3, .lig = 0 });
   Model* mo_laser      = model_create("tower", (Material) { DEEP_PURPLE, 0.5, 1.6, 1.0, .lig = 0 });
+  Model* mo_laser_u    = model_create("tower", (Material) { DEEP_PURPLE, 0.5, 1.6, 0.2, .lig = 0 });
   Model* mo_beam       = model_create("tower", (Material) { DEEP_RED,    0.5, 1.6, 0.8, .lig = 1 });
-  Model* mo_mirror     = model_create("tower", (Material) { GRAY,        0.5, 1.6, 1.0, .lig = 0 });
+  Model* mo_mirror     = model_create("tower", (Material) { PASTEL_BLUE, 0.5, 1.6, 1.0, .lig = 0 });
+  Model* mo_mirror_u   = model_create("tower", (Material) { PASTEL_BLUE, 0.5, 1.6, 0.2, .lig = 0 });
 
   u32 lowres_fbo = canvas_create_FBO(cam.width * UPSCALE, cam.height * UPSCALE, GL_NEAREST, GL_NEAREST);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
   while (!glfwWindowShouldClose(cam.window)) {
     if (holding_laser) place_laser();
+    if (holding_mirror) place_mirror();
+
+    if (holding_laser || holding_mirror) fov_gain_cur = MIN(fov_gain, fov_gain_cur + fov_gain_step);
+    else                                 fov_gain_cur = MAX(0, fov_gain_cur - fov_gain_step);
+    cam.fov = base_fov + fov_gain_cur;
+    generate_proj_mat(&cam, shader);
 
     canvas_set_pnt_lig(shader, (PntLig) { WHITE, { cam.pos[0], cam.pos[1], cam.pos[2] }, 1, 0.22, 0.2 }, 0);
 
@@ -103,7 +118,7 @@ int main() {
       }
     }
 
-    for (u8 i = 0; i < mirror_c; i++) {
+    for (u8 i = 0; i < mirror_c - holding_mirror; i++) {
       model_bind(mo_mirror, shader);
       glm_translate(mo_mirror->model, mirrors[i].pos);
       glm_rotate(mo_mirror->model, mirrors[i].rot, VEC3(0, -1, 0));
@@ -112,11 +127,18 @@ int main() {
     }
 
     if (laser.pos[0]) {
-      model_bind(mo_laser, shader);
-      glm_translate(mo_laser->model, VEC3(laser.pos[0], 0, laser.pos[2]));
-      glm_rotate(mo_laser->model, laser.rot, VEC3(0, -1, 0));
-      glm_scale(mo_laser->model, VEC3(0.5, 1.5, 0.5));
-      model_draw(mo_laser, shader);
+      Model* model = holding_laser ? mo_laser_u : mo_laser;
+      model_bind(model, shader);
+      glm_translate(model->model, VEC3(laser.pos[0], 0, laser.pos[2]));
+      glm_rotate(model->model, laser.rot, VEC3(0, -1, 0));
+      glm_scale(model->model, VEC3(0.1, 1.1, 0.1));
+      model_draw(model, shader);
+
+      model_bind(model, shader);
+      glm_translate(model->model, VEC3(laser.pos[0], 0.9, laser.pos[2]));
+      glm_rotate(model->model, laser.rot, VEC3(0, -1, 0));
+      glm_scale(model->model, VEC3(0.5, 0.2, 0.2));
+      model_draw(model, shader);
 
       for (u8 i = 0; i < beam_c; i++) {
         model_bind(mo_beam, shader);
@@ -126,6 +148,14 @@ int main() {
         glm_scale(mo_beam->model, VEC3(0.1, beams[i].size, 0.1));
         model_draw(mo_beam, shader);
       }
+    }
+
+    if (holding_mirror) {
+      model_bind(mo_mirror_u, shader);
+      glm_translate(mo_mirror_u->model, mirrors[mirror_c - 1].pos);
+      glm_rotate(mo_mirror_u->model, mirrors[mirror_c - 1].rot, VEC3(0, -1, 0));
+      glm_scale(mo_mirror_u->model, VEC3(MIRROR_WIDTH, 1.5, 0.1));
+      model_draw(mo_mirror_u, shader);
     }
 
     for (u8 y = 0; y < LEN(map); y++) {
@@ -241,6 +271,7 @@ void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
   beams[beam_c].rot = rot;
   beams[beam_c].size = MIN(closest_mirror_dist, closest_wall_dist);
   beam_c++;
+  ASSERT(beam_c <= MAX_BEAMS, "MAX_BEAMS EXCEEDED");
 
   if (closest_mirror_dist > closest_wall_dist) return;
 
@@ -260,25 +291,31 @@ void place_laser() {
   glm_vec3_add(laser.pos, front, laser.pos);
 
   laser.rot = xz_angle(front);
+
+  compute_laser();
+}
+
+void place_mirror() {
+  vec3 front = { cam.dir[0], 0, cam.dir[2] };
+  glm_vec3_normalize(front);
+
+  mirrors[mirror_c - 1].rot = xz_angle(front) + PI2;
+  VEC3_COPY(VEC3(cam.pos[0], 0, cam.pos[2]), mirrors[mirror_c - 1].pos);
+  glm_vec3_add(mirrors[mirror_c - 1].pos, front, mirrors[mirror_c - 1].pos);
+
   compute_laser();
 }
 
 void char_press(GLFWwindow* window, u32 key) {
-  if (key == 'e') {
-    holding_laser = !holding_laser;
-  }
+  if (key == 'e') holding_laser = !holding_laser;
 
   if (key == 'q') {
-    vec3 front = { cam.dir[0], 0, cam.dir[2] };
-    glm_vec3_normalize(front);
+    holding_mirror = !holding_mirror;
 
-    mirrors[mirror_c].rot = xz_angle(front) + PI2;
-    VEC3_COPY(VEC3(cam.pos[0], 0, cam.pos[2]), mirrors[mirror_c].pos);
-    glm_vec3_add(mirrors[mirror_c].pos, front, mirrors[mirror_c].pos);
-
-    mirror_c++;
-
-    compute_laser();
+    if (holding_mirror) {
+      mirror_c++;
+      ASSERT(mirror_c <= MAX_MIRRORS, "MAX_MIRRORS EXCEEDED");
+    }
   }
 
   if (key == ' ') {
