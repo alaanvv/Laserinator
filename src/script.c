@@ -8,14 +8,15 @@
 
 void camera_compute_movement(Camera* cam, u8 shader);
 void char_press(GLFWwindow*, u32);
+void place_laser();
 
 // ---
 
 CanvasConfig config = { 
   .title = "LASERINATOR",
   .capture_mouse = 1, 
-  .fullscreen = 0,
-  .screen_size = 0.5,
+  .fullscreen = 1,
+  .screen_size = 1,
   .clear_color = BLACK 
 };
 
@@ -54,6 +55,8 @@ Mirror mirrors[MAX_MIRRORS];
 u8 beam_c = 0;
 u8 mirror_c = 0;
 
+u8 holding_laser = 0;
+
 // ---
 
 int main() {
@@ -68,13 +71,15 @@ int main() {
   Model* mo_pillar_off = model_create("cube",  (Material) { DEEP_RED,    0.5, 1.6, 0.3, .lig = 0 });
   Model* mo_pillar_on  = model_create("cube",  (Material) { DEEP_GREEN,  0.5, 1.6, 0.3, .lig = 0 });
   Model* mo_laser      = model_create("tower", (Material) { DEEP_PURPLE, 0.5, 1.6, 1.0, .lig = 0 });
-  Model* mo_beam       = model_create("tower", (Material) { DEEP_RED,    0.5, 1.6, 0.2, .lig = 1 });
+  Model* mo_beam       = model_create("tower", (Material) { DEEP_RED,    0.5, 1.6, 0.8, .lig = 1 });
   Model* mo_mirror     = model_create("tower", (Material) { GRAY,        0.5, 1.6, 1.0, .lig = 0 });
 
   u32 lowres_fbo = canvas_create_FBO(cam.width * UPSCALE, cam.height * UPSCALE, GL_NEAREST, GL_NEAREST);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
   while (!glfwWindowShouldClose(cam.window)) {
+    if (holding_laser) place_laser();
+
     canvas_set_pnt_lig(shader, (PntLig) { WHITE, { cam.pos[0], cam.pos[1], cam.pos[2] }, 1, 0.22, 0.2 }, 0);
 
     model_bind(mo_wall, shader);
@@ -247,17 +252,20 @@ void compute_laser() {
   create_beam(laser.pos, laser.rot, -1);
 }
 
+void place_laser() {
+  vec3 front = { cam.dir[0], 0, cam.dir[2] };
+  glm_vec3_normalize(front);
+
+  VEC3_COPY(VEC3(cam.pos[0], 1, cam.pos[2]), laser.pos);
+  glm_vec3_add(laser.pos, front, laser.pos);
+
+  laser.rot = xz_angle(front);
+  compute_laser();
+}
+
 void char_press(GLFWwindow* window, u32 key) {
   if (key == 'e') {
-    vec3 front = { cam.dir[0], 0, cam.dir[2] };
-    glm_vec3_normalize(front);
-
-    VEC3_COPY(VEC3(cam.pos[0], 1, cam.pos[2]), laser.pos);
-    glm_vec3_add(laser.pos, front, laser.pos);
-
-    laser.rot = xz_angle(front);
-
-    compute_laser();
+    holding_laser = !holding_laser;
   }
 
   if (key == 'q') {
