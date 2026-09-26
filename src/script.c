@@ -1,9 +1,10 @@
 #include "canvas.h"
 #include "map.h"
 
-#define UPSCALE     0.1
-#define MAX_BEAMS   100
-#define MAX_MIRRORS 100
+#define UPSCALE      0.1
+#define MAX_BEAMS    100
+#define MAX_MIRRORS  100
+#define MIRROR_WIDTH 0.8
 
 void camera_compute_movement(Camera* cam, u8 shader);
 void char_press(GLFWwindow*, u32);
@@ -13,8 +14,8 @@ void char_press(GLFWwindow*, u32);
 CanvasConfig config = { 
   .title = "LASERINATOR",
   .capture_mouse = 1, 
-  .fullscreen = 1,
-  .screen_size = 1,
+  .fullscreen = 0,
+  .screen_size = 0.5,
   .clear_color = BLACK 
 };
 
@@ -96,21 +97,11 @@ int main() {
       }
     }
 
-    if ((int) glfwGetTime() % 10 > 5) {
-        model_bind(mo_wall, shader);
-        glm_translate(mo_wall->model, VEC3(4, 0, 4));
-        model_draw(mo_wall, shader);
-    } else {
-        model_bind(mo_mirror, shader);
-        glm_translate(mo_mirror->model, VEC3(4.5, 0, 4.5));
-        model_draw(mo_mirror, shader);
-    }
-
     for (u8 i = 0; i < mirror_c; i++) {
       model_bind(mo_mirror, shader);
       glm_translate(mo_mirror->model, mirrors[i].pos);
       glm_rotate(mo_mirror->model, mirrors[i].rot, VEC3(0, -1, 0));
-      glm_scale(mo_mirror->model, VEC3(0.8, 1.5, 0.1));
+      glm_scale(mo_mirror->model, VEC3(MIRROR_WIDTH, 1.5, 0.1));
       model_draw(mo_mirror, shader);
     }
 
@@ -123,8 +114,8 @@ int main() {
 
       model_bind(mo_beam, shader);
       glm_translate(mo_beam->model, beams[0].pos);
-      glm_rotate(mo_beam->model, PI2,       VEC3(1, 0, 0));
-      glm_rotate(mo_beam->model, beams[0].rot, VEC3(0, 0, 1));
+      glm_rotate(mo_beam->model, -PI2, VEC3(0, 0, 1));
+      glm_rotate(mo_beam->model, beams[0].rot, VEC3(1, 0, 0));
       glm_scale(mo_beam->model, VEC3(0.1, beams[0].size, 0.1));
       model_draw(mo_beam, shader);
     }
@@ -162,6 +153,12 @@ int main() {
 
 // ---
 
+f32 xz_angle(vec3 dir) {
+  dir[1] = 0;
+  glm_vec3_normalize(dir);
+  return fmod(atan2(dir[2], dir[0]) + TAU, TAU);
+}
+
 void camera_compute_movement(Camera* cam, u8 shader) {
   vec3 prompted_move = {
     (glfwGetKey(cam->window, GLFW_KEY_D) == GLFW_PRESS ? cam->speed / cam->fps : 0) + (glfwGetKey(cam->window, GLFW_KEY_A) == GLFW_PRESS ? -cam->speed / cam->fps : 0), 0,
@@ -192,6 +189,39 @@ void camera_compute_movement(Camera* cam, u8 shader) {
   generate_view_mat(cam, shader);
 }
 
+void compute_laser() {
+    vec3 pos, front;
+    VEC3_COPY(VEC3(cos(laser.rot), 0, sin(laser.rot)), front);
+    VEC3_COPY(laser.pos, pos);
+    glm_vec3_scale(front, 0.05, front);
+
+    while (map[(u8) pos[2]][(u8) pos[0]] != 1)
+      glm_vec3_add(pos, front, pos);
+
+    VEC3_COPY(laser.pos, beams[0].pos);
+    beams[0].rot = laser.rot;
+
+    f32 closest_wall_dist = sqrt(pow(fabs(pos[0] - laser.pos[0]), 2) + pow(fabs(pos[2] - laser.pos[2]), 2));
+    f32 closest_mirror_dist = FLT_MAX;
+
+    for (u8 m = 0; m < mirror_c; m++) {
+      f32 beam_slope = tan(beams[0].rot);
+      f32 mirror_slope = tan(mirrors[m].rot);
+
+      f32 beam_y_offset = beams[0].pos[2] - (beams[0].pos[0] * beam_slope);
+      f32 mirror_y_offset = mirrors[m].pos[2] - (mirrors[m].pos[0] * mirror_slope);
+
+      f32 x_intersect = (mirror_y_offset - beam_y_offset) / (beam_slope - mirror_slope);
+      f32 y_intersect = x_intersect * beam_slope + beam_y_offset;
+
+      if (sqrt(pow(fabs(mirrors[m].pos[0] - x_intersect), 2) + pow(fabs(mirrors[m].pos[2] - y_intersect), 2)) > MIRROR_WIDTH / 2) continue;
+
+      closest_mirror_dist = MIN(closest_mirror_dist, sqrt(pow(fabs(laser.pos[0] - x_intersect), 2) + pow(fabs(laser.pos[2] - y_intersect), 2)));
+    }
+
+    beams[0].size = MIN(closest_mirror_dist, closest_wall_dist);
+}
+
 void char_press(GLFWwindow* window, u32 key) {
   if (key == 'e') {
     vec3 front = { cam.dir[0], 0, cam.dir[2] };
@@ -200,28 +230,30 @@ void char_press(GLFWwindow* window, u32 key) {
     VEC3_COPY(VEC3(cam.pos[0], 1, cam.pos[2]), laser.pos);
     glm_vec3_add(laser.pos, front, laser.pos);
 
-    laser.rot = atan2(front[2], front[0]) - PI2;
+    laser.rot = xz_angle(front);
 
-    vec3 pos;
-    glm_vec3_scale(front, 0.05, front);
-    VEC3_COPY(laser.pos, pos);
-
-    while (map[(u8) pos[2]][(u8) pos[0]] != 1)
-      glm_vec3_add(pos, front, pos);
-
-    VEC3_COPY(laser.pos, beams[0].pos);
-    beams[0].rot = laser.rot;
-    beams[0].size = sqrt(pow(fabs(pos[0] - laser.pos[0]), 2) + pow(fabs(pos[2] - laser.pos[2]), 2));
+    compute_laser();
   }
 
   if (key == 'q') {
     vec3 front = { cam.dir[0], 0, cam.dir[2] };
     glm_vec3_normalize(front);
 
-    mirrors[mirror_c].rot = atan2(front[2], front[0]) - PI2;
+    mirrors[mirror_c].rot = xz_angle(front) + PI2;
     VEC3_COPY(VEC3(cam.pos[0], 0, cam.pos[2]), mirrors[mirror_c].pos);
     glm_vec3_add(mirrors[mirror_c].pos, front, mirrors[mirror_c].pos);
 
     mirror_c++;
+
+    compute_laser();
+  }
+
+  if (key == ' ') {
+    vec3 front = { cam.dir[0], 0, cam.dir[2] };
+    glm_vec3_normalize(front);
+
+    printf("P.X %.2f P.Y %.2f\n", cam.pos[0], cam.pos[2]);
+    printf("P.DIR = (%.2f, %.2f, %.2f)\n", cam.dir[0], cam.dir[1], cam.dir[2]);
+    printf("P.ROT = %.2f\n", xz_angle(front));
   }
 }
