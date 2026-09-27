@@ -21,12 +21,12 @@
 
 - [x] Laser shooter
     - [x] Basic entity
-    - [ ] Grabbable laser shooters
-- [ ] Mirrors
+    - [x] Grabbable laser shooters
+- [x] Mirrors
     - [x] Basic entity
     - [x] Reflection
-    - [ ] Grabbable mirrors
-- [ ] Pillars mechanics
+    - [x] Grabbable mirrors
+- [x] Pillars mechanics
   - [x] Turn on/off
   - [x] Cast light
-- [ ] Load map from file
+- [x] Load map from file

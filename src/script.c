@@ -7,10 +7,11 @@
 #define MIRROR_WIDTH  0.8
 #define FOV_BASE      PI4
 #define FOV_MAX       PI2
-#define FOV_STEP 0.03
+#define FOV_STEP      0.02
 
 void camera_compute_movement(Camera* cam, u8 shader);
 void char_press(GLFWwindow*, u32);
+void compute_laser();
 void place_laser();
 void place_mirror();
 
@@ -19,8 +20,8 @@ void place_mirror();
 CanvasConfig config = { 
   .title = "LASERINATOR",
   .capture_mouse = 1, 
-  .fullscreen = 1,
-  .screen_size = 1,
+  .fullscreen = 0,
+  .screen_size = 0.5,
   .clear_color = BLACK 
 };
 
@@ -54,7 +55,7 @@ typedef struct {
 
 // ---
 
-Laser laser = { 0 };
+Laser laser = { { 1.5, 1, 1.5 } };
 Beam beams[MAX_BEAMS];
 Mirror mirrors[MAX_MIRRORS];
 
@@ -74,7 +75,11 @@ int main() {
   generate_proj_mat(&cam, shader);
   generate_view_mat(&cam, shader);
 
+  u32 hud_shader = shader_create_program("hud");
+  generate_ortho_mat(&cam, hud_shader);
+
   u32 lowres_fbo = canvas_create_FBO(cam.width * UPSCALE, cam.height * UPSCALE, GL_NEAREST, GL_NEAREST);
+  u32 click_fbo = canvas_create_FBO(cam.width * UPSCALE, cam.height * UPSCALE, GL_NEAREST, GL_NEAREST);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
   Model* mo_wall       = model_create("cube",  (Material) { WHITE,       0.5, 1.6, 1.0, .lig = 0 });
@@ -85,6 +90,12 @@ int main() {
   Model* mo_beam       = model_create("tower", (Material) { DEEP_RED,    0.5, 1.6, 0.8, .lig = 1 });
   Model* mo_mirror     = model_create("tower", (Material) { PASTEL_BLUE, 0.5, 1.6, 1.0, .lig = 0 });
   Model* mo_mirror_u   = model_create("tower", (Material) { PASTEL_BLUE, 0.5, 1.6, 0.2, .lig = 0 });
+  Material absolute    = { .alp = 1, .lig = 1 };
+
+  mirrors[mirror_c++] = (Mirror) { { 3.5, 0, 1.5 }, PI4 };
+  mirrors[mirror_c++] = (Mirror) { { 4.5, 0, 1.5 }, PI4 };
+  mirrors[mirror_c++] = (Mirror) { { 5.5, 0, 1.5 }, PI4 };
+  compute_laser();
 
   while (!glfwWindowShouldClose(cam.window)) {
     if (holding_laser)  place_laser();
@@ -92,8 +103,9 @@ int main() {
 
     if (holding_laser || holding_mirror) cam.fov = MIN(FOV_MAX,  cam.fov + FOV_STEP);
     else                                 cam.fov = MAX(FOV_BASE, cam.fov - FOV_STEP);
-    generate_proj_mat(&cam, shader);
 
+    glUseProgram(shader);
+    generate_proj_mat(&cam, shader);
     canvas_set_pnt_lig(shader, (PntLig) { WHITE, { cam.pos[0], cam.pos[1], cam.pos[2] }, 1, 0.22, 0.2 }, 0);
 
     // Floor
@@ -185,6 +197,10 @@ int main() {
       }
     }
 
+    // HUD
+    glUseProgram(hud_shader);
+    if (!holding_laser && !holding_mirror) hud_draw_rec(hud_shader, 0, (vec3) BLACK, cam.width / 2 - 10, cam.height / 2 - 10, 20, 20);
+
     // Lowres
     glBlitNamedFramebuffer(0, lowres_fbo, 0, 0, cam.width, cam.height, 0, 0, cam.width * UPSCALE, cam.height * UPSCALE, GL_COLOR_BUFFER_BIT, GL_NEAREST);
     glBlitNamedFramebuffer(lowres_fbo, 0, 0, 0, cam.width * UPSCALE, cam.height * UPSCALE, 0, 0, cam.width, cam.height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
@@ -192,10 +208,63 @@ int main() {
     // Finish
     glfwSwapBuffers(cam.window);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    camera_handle_inputs(&cam, shader);
+
+    // Clickable
+    glUseProgram(shader);
+    for (u8 y = 0; y < LEN(map); y++) {
+      for (u8 x = 0; x < LEN(map[0]); x++) {
+        if (map[y][x].type == WALL) {
+          model_bind(mo_wall, shader);
+          canvas_set_material(shader, absolute);
+          canvas_uni3f(shader, "MAT.COL", 0, 0, 0);
+          glm_translate(mo_wall->model, VEC3(x, 0, y));
+          glm_scale(mo_wall->model, VEC3(1, 3, 1));
+          model_draw(mo_wall, shader);
+        }
+        if (map[y][x].type == GATE) {
+          model_bind(mo_wall, shader);
+          canvas_set_material(shader, absolute);
+          canvas_uni3f(shader, "MAT.COL", 0, 0, 0);
+          glm_translate(mo_wall->model, VEC3(x, -map[y][x].data.gate.offset, y));
+          glm_scale(mo_wall->model, VEC3(1, 3, 1));
+          model_draw(mo_wall, shader);
+        }
+      }
+    }
+
+    for (u8 i = 0; i < mirror_c - holding_mirror; i++) {
+      model_bind(mo_mirror, shader);
+      canvas_set_material(shader, absolute);
+      canvas_uni3f(shader, "MAT.COL", (f32) 1 / 2, (f32) i / MAX_MIRRORS, 1);
+      glm_translate(mo_mirror->model, mirrors[i].pos);
+      glm_rotate(mo_mirror->model, mirrors[i].rot, VEC3(0, -1, 0));
+      glm_scale(mo_mirror->model, VEC3(MIRROR_WIDTH, 1.5, 0.1));
+      model_draw(mo_mirror, shader);
+    }
+
+    if (laser.pos[0]) {
+      Model* model = holding_laser ? mo_laser_u : mo_laser;
+      model_bind(model, shader);
+      canvas_set_material(shader, absolute);
+      canvas_uni3f(shader, "MAT.COL", (f32) 2 / 2, 0, 0);
+      glm_translate(model->model, VEC3(laser.pos[0], 0, laser.pos[2]));
+      glm_rotate(model->model, laser.rot, VEC3(0, -1, 0));
+      glm_scale(model->model, VEC3(0.1, 1.1, 0.1));
+      model_draw(model, shader);
+      model_bind(model, shader);
+      canvas_set_material(shader, absolute);
+      canvas_uni3f(shader, "MAT.COL", (f32) 2 / 2, 0, 0);
+      glm_translate(model->model, VEC3(laser.pos[0], 0.9, laser.pos[2]));
+      glm_rotate(model->model, laser.rot, VEC3(0, -1, 0));
+      glm_scale(model->model, VEC3(0.5, 0.2, 0.2));
+      model_draw(model, shader);
+    }
+
     camera_compute_movement(&cam, shader);
+    camera_handle_inputs(&cam, shader);
     glfwPollEvents();
     update_fps(&cam);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   }
 
   glfwTerminate();
@@ -358,15 +427,30 @@ void place_mirror() {
   compute_laser();
 }
 
-void char_press(GLFWwindow* window, u32 key) {
-  if (key == 'e') holding_laser = !holding_laser;
+void grab_mirror(u8 i) {
+  for (u8 m = i; m < mirror_c - 1; m++)
+    mirrors[m] = mirrors[m + 1];
+}
 
-  if (key == 'q') {
-    holding_mirror = !holding_mirror;
+void char_press(GLFWwindow* window, u32 key) {
+  if (key == 'e') {
+    if (holding_laser) {
+      holding_laser = !holding_laser;
+      return;
+    }
 
     if (holding_mirror) {
-      mirror_c++;
-      ASSERT(mirror_c <= MAX_MIRRORS, "MAX_MIRRORS EXCEEDED");
+      holding_mirror = !holding_mirror;
+      return;
+    }
+
+    f32* buffer = malloc(sizeof(f32) * 3);
+    glReadPixels(cam.width / 2, cam.height / 2, 1, 1, GL_RGB, GL_FLOAT, buffer);
+
+    if ((i8) roundf(buffer[0] * 2) == 2) holding_laser = !holding_laser;
+    if ((i8) roundf(buffer[0] * 2) == 1) {
+      grab_mirror((i8) roundf(buffer[1] * MAX_MIRRORS));
+      holding_mirror = !holding_mirror;
     }
   }
 
