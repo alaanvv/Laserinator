@@ -76,7 +76,7 @@ int main() {
 
   Model* mo_wall       = model_create("cube",  (Material) { WHITE,       0.5, 1.6, 1.0, .lig = 0 });
   Model* mo_pillar_off = model_create("cube",  (Material) { DEEP_RED,    0.5, 1.6, 0.3, .lig = 0 });
-  Model* mo_pillar_on  = model_create("cube",  (Material) { DEEP_GREEN,  0.5, 1.6, 0.3, .lig = 0 });
+  Model* mo_pillar_on  = model_create("cube",  (Material) { DEEP_GREEN,  0.5, 2.6, 0.3, .lig = 1 });
   Model* mo_laser      = model_create("tower", (Material) { DEEP_PURPLE, 0.5, 1.6, 1.0, .lig = 0 });
   Model* mo_laser_u    = model_create("tower", (Material) { DEEP_PURPLE, 0.5, 1.6, 0.2, .lig = 0 });
   Model* mo_beam       = model_create("tower", (Material) { DEEP_RED,    0.5, 1.6, 0.8, .lig = 1 });
@@ -233,8 +233,12 @@ void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
   VEC3_COPY(VEC3(cos(rot), 0, sin(rot)), front);
   glm_vec3_scale(front, 0.05, front);
 
-  while (map[(u8) pos[2]][(u8) pos[0]] != 1)
+  while (1) {
+    if (map[(u8) pos[2]][(u8) pos[0]] == 1) break;
+    if (map[(u8) pos[2]][(u8) pos[0]] == 2) map[(u8) pos[2]][(u8) pos[0]] = 3;
+
     glm_vec3_add(pos, front, pos);
+  }
 
   f32 closest_wall_dist = sqrt(pow(fabs(pos[0] - origin[0]), 2) + pow(fabs(pos[2] - origin[2]), 2));
   f32 closest_mirror_dist = FLT_MAX;
@@ -279,13 +283,16 @@ void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
 }
 
 void compute_laser() {
+  for (u8 y = 0; y < LEN(map); y++)
+    for (u8 x = 0; x < LEN(map[0]); x++)
+      if (map[y][x] == 3) map[y][x] = 2;
+
   beam_c = 0;
   create_beam(laser.pos, laser.rot, -1);
 }
 
 void place_laser() {
   vec3 front = { cam.dir[0], 0, cam.dir[2] };
-  glm_vec3_normalize(front);
 
   VEC3_COPY(VEC3(cam.pos[0], 1, cam.pos[2]), laser.pos);
   glm_vec3_add(laser.pos, front, laser.pos);
@@ -297,11 +304,11 @@ void place_laser() {
 
 void place_mirror() {
   vec3 front = { cam.dir[0], 0, cam.dir[2] };
-  glm_vec3_normalize(front);
 
-  mirrors[mirror_c - 1].rot = xz_angle(front) + PI2;
   VEC3_COPY(VEC3(cam.pos[0], 0, cam.pos[2]), mirrors[mirror_c - 1].pos);
   glm_vec3_add(mirrors[mirror_c - 1].pos, front, mirrors[mirror_c - 1].pos);
+
+  mirrors[mirror_c - 1].rot = xz_angle(front) + PI2;
 
   compute_laser();
 }
