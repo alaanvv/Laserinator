@@ -228,19 +228,6 @@ void camera_compute_movement(Camera* cam, u8 shader) {
 }
 
 void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
-  vec3 pos, front;
-  VEC3_COPY(origin, pos);
-  VEC3_COPY(VEC3(cos(rot), 0, sin(rot)), front);
-  glm_vec3_scale(front, 0.05, front);
-
-  while (1) {
-    if (map[(u8) pos[2]][(u8) pos[0]] == 1) break;
-    if (map[(u8) pos[2]][(u8) pos[0]] == 2) map[(u8) pos[2]][(u8) pos[0]] = 3;
-
-    glm_vec3_add(pos, front, pos);
-  }
-
-  f32 closest_wall_dist = sqrt(pow(fabs(pos[0] - origin[0]), 2) + pow(fabs(pos[2] - origin[2]), 2));
   f32 closest_mirror_dist = FLT_MAX;
   f32 closest_mirror_rot;
   vec3 closest_mirror_intersect;
@@ -270,6 +257,20 @@ void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
       closest_mirror_i = m;
     }
   }
+
+  vec3 pos, front;
+  VEC3_COPY(origin, pos);
+  VEC3_COPY(VEC3(cos(rot), 0, sin(rot)), front);
+  glm_vec3_scale(front, 0.05, front);
+
+  while (sqrt(pow(fabs(pos[0] - origin[0]), 2) + pow(fabs(pos[2] - origin[2]), 2)) < closest_mirror_dist) {
+    if (map[(u8) pos[2]][(u8) pos[0]] == 1) break;
+    if (map[(u8) pos[2]][(u8) pos[0]] == 2) map[(u8) pos[2]][(u8) pos[0]] = 3;
+
+    glm_vec3_add(pos, front, pos);
+  }
+
+  f32 closest_wall_dist = sqrt(pow(fabs(pos[0] - origin[0]), 2) + pow(fabs(pos[2] - origin[2]), 2));
 
   VEC3_COPY(origin, beams[beam_c].pos);
   beams[beam_c].rot = rot;
