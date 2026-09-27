@@ -252,6 +252,7 @@ void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
 
     vec3 xz_intersection;
     xz_intersection[0] = (mirror_offset - beam_offset) / (beam_slope - mirror_slope);
+    xz_intersection[1] = 1;
     xz_intersection[2] = xz_intersection[0] * beam_slope + beam_offset;
 
     if (xz_dist(mirrors[m].pos, xz_intersection) > MIRROR_WIDTH / 2) continue;
@@ -300,10 +301,15 @@ void compute_laser() {
 }
 
 void place_laser() {
+  vec3 target_pos;
+
   vec3 front = { cam.dir[0], 0, cam.dir[2] };
 
-  VEC3_COPY(VEC3(cam.pos[0], 1, cam.pos[2]), laser.pos);
-  glm_vec3_add(laser.pos, front, laser.pos);
+  VEC3_COPY(VEC3(cam.pos[0], 1, cam.pos[2]), target_pos);
+  glm_vec3_add(target_pos, front, target_pos);
+
+  if (map[(u8) target_pos[2]][(u8) target_pos[0]] != 0) return;
+  VEC3_COPY(target_pos, laser.pos);
 
   laser.rot = xz_angle(front);
 
@@ -311,10 +317,15 @@ void place_laser() {
 }
 
 void place_mirror() {
+  vec3 target_pos;
+
   vec3 front = { cam.dir[0], 0, cam.dir[2] };
 
-  VEC3_COPY(VEC3(cam.pos[0], 0, cam.pos[2]), mirrors[mirror_c - 1].pos);
-  glm_vec3_add(mirrors[mirror_c - 1].pos, front, mirrors[mirror_c - 1].pos);
+  VEC3_COPY(VEC3(cam.pos[0], 0, cam.pos[2]), target_pos);
+  glm_vec3_add(target_pos, front, target_pos);
+
+  if (map[(u8) target_pos[2]][(u8) target_pos[0]] != 0) return;
+  VEC3_COPY(target_pos, mirrors[mirror_c - 1].pos);
 
   mirrors[mirror_c - 1].rot = xz_angle(front) + PI2;
 
