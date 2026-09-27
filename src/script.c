@@ -110,7 +110,7 @@ int main() {
     // Walls
     for (u8 y = 0; y < LEN(map); y++) {
       for (u8 x = 0; x < LEN(map[0]); x++) {
-        if (map[y][x] != 1) continue;
+        if (map[y][x].type != WALL) continue;
 
         model_bind(mo_wall, shader);
         glm_translate(mo_wall->model, VEC3(x, 0, y));
@@ -166,8 +166,7 @@ int main() {
     for (u8 y = 0; y < LEN(map); y++) {
       for (u8 x = 0; x < LEN(map[0]); x++) {
         Model* model;
-        if      (map[y][x] == 2) model = mo_pillar_off;
-        else if (map[y][x] == 3) model = mo_pillar_on;
+        if (map[y][x].type == PILLAR) model = map[y][x].data.pillar.active ? mo_pillar_on : mo_pillar_off;
         else continue;
 
         model_bind(model, shader);
@@ -228,10 +227,10 @@ void camera_compute_movement(Camera* cam, u8 shader) {
   glm_vec3_scale(front, prompted_move[2], frontal);
   glm_vec3_add(cam->pos, frontal,  cam->pos);
 
-  if (map[(u8) old_z][(u8) old_x + 1] && ((u8) (cam->pos[0] + 0.1)) == ((u8) old_x + 1)) cam->pos[0] = old_x;
-  if (map[(u8) old_z][(u8) old_x - 1] && ((u8) (cam->pos[0] - 0.1)) == ((u8) old_x - 1)) cam->pos[0] = old_x;
-  if (map[(u8) old_z + 1][(u8) old_x] && ((u8) (cam->pos[2] + 0.1)) == ((u8) old_z + 1)) cam->pos[2] = old_z;
-  if (map[(u8) old_z - 1][(u8) old_x] && ((u8) (cam->pos[2] - 0.1)) == ((u8) old_z - 1)) cam->pos[2] = old_z;
+  if (map[(u8) old_z][(u8) old_x + 1].type != EMPTY && ((u8) (cam->pos[0] + 0.1)) == ((u8) old_x + 1)) cam->pos[0] = old_x;
+  if (map[(u8) old_z][(u8) old_x - 1].type != EMPTY && ((u8) (cam->pos[0] - 0.1)) == ((u8) old_x - 1)) cam->pos[0] = old_x;
+  if (map[(u8) old_z + 1][(u8) old_x].type != EMPTY && ((u8) (cam->pos[2] + 0.1)) == ((u8) old_z + 1)) cam->pos[2] = old_z;
+  if (map[(u8) old_z - 1][(u8) old_x].type != EMPTY && ((u8) (cam->pos[2] - 0.1)) == ((u8) old_z - 1)) cam->pos[2] = old_z;
 
   generate_view_mat(cam, shader);
 }
@@ -272,8 +271,8 @@ void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
   glm_vec3_scale(front, 0.1, front);
 
   while (xz_dist(pos, origin) < closest_mirror_dist) {
-    if (map[(u8) pos[2]][(u8) pos[0]] == 1) break;
-    if (map[(u8) pos[2]][(u8) pos[0]] == 2) map[(u8) pos[2]][(u8) pos[0]] = 3;
+    if (map[(u8) pos[2]][(u8) pos[0]].type == WALL) break;
+    if (map[(u8) pos[2]][(u8) pos[0]].type == PILLAR) map[(u8) pos[2]][(u8) pos[0]].data.pillar.active = 1;
 
     glm_vec3_add(pos, front, pos);
   }
@@ -294,7 +293,7 @@ void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
 void compute_laser() {
   for (u8 y = 0; y < LEN(map); y++)
     for (u8 x = 0; x < LEN(map[0]); x++)
-      if (map[y][x] == 3) map[y][x] = 2;
+      if (map[y][x].type == PILLAR) map[y][x].data.pillar.active = 0;
 
   beam_c = 0;
   create_beam(laser.pos, laser.rot, -1);
@@ -308,7 +307,7 @@ void place_laser() {
   VEC3_COPY(VEC3(cam.pos[0], 1, cam.pos[2]), target_pos);
   glm_vec3_add(target_pos, front, target_pos);
 
-  if (map[(u8) target_pos[2]][(u8) target_pos[0]] != 0) return;
+  if (map[(u8) target_pos[2]][(u8) target_pos[0]].type != EMPTY) return;
   VEC3_COPY(target_pos, laser.pos);
 
   laser.rot = xz_angle(front);
@@ -324,7 +323,7 @@ void place_mirror() {
   VEC3_COPY(VEC3(cam.pos[0], 0, cam.pos[2]), target_pos);
   glm_vec3_add(target_pos, front, target_pos);
 
-  if (map[(u8) target_pos[2]][(u8) target_pos[0]] != 0) return;
+  if (map[(u8) target_pos[2]][(u8) target_pos[0]].type != EMPTY) return;
   VEC3_COPY(target_pos, mirrors[mirror_c - 1].pos);
 
   mirrors[mirror_c - 1].rot = xz_angle(front) + PI2;
