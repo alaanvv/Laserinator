@@ -19,14 +19,14 @@
 
 # Todo
 
-- [ ] Laser shooter
-    - [ ] Basic entity
+- [x] Laser shooter
+    - [x] Basic entity
     - [ ] Grabbable laser shooters
 - [ ] Mirrors
-    - [ ] Basic entity
-    - [ ] Reflection
+    - [x] Basic entity
+    - [x] Reflection
     - [ ] Grabbable mirrors
 - [ ] Pillars mechanics
-  - [ ] Turn on/off
-  - [ ] Cast light
+  - [x] Turn on/off
+  - [x] Cast light
 - [ ] Load map from file
