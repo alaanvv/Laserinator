@@ -107,15 +107,24 @@ int main() {
     glm_scale(mo_wall->model, VEC3((u8) LEN(map[0]), 0.1, (u8) LEN(map)));
     model_draw(mo_wall, shader);
 
-    // Walls
+    // Walls / Gates
     for (u8 y = 0; y < LEN(map); y++) {
       for (u8 x = 0; x < LEN(map[0]); x++) {
-        if (map[y][x].type != WALL) continue;
+        if (map[y][x].type == WALL) {
+          model_bind(mo_wall, shader);
+          glm_translate(mo_wall->model, VEC3(x, 0, y));
+          glm_scale(mo_wall->model, VEC3(1, 3, 1));
+          model_draw(mo_wall, shader);
+        }
+        if (map[y][x].type == GATE) {
+          model_bind(mo_wall, shader);
+          glm_translate(mo_wall->model, VEC3(x, -map[y][x].data.gate.offset, y));
+          glm_scale(mo_wall->model, VEC3(1, 3, 1));
+          model_draw(mo_wall, shader);
 
-        model_bind(mo_wall, shader);
-        glm_translate(mo_wall->model, VEC3(x, 0, y));
-        glm_scale(mo_wall->model, VEC3(1, 3, 1));
-        model_draw(mo_wall, shader);
+          if (map[y][x].data.gate.active) map[y][x].data.gate.offset = MIN(3, map[y][x].data.gate.offset + 0.1);
+          else                            map[y][x].data.gate.offset = MAX(0, map[y][x].data.gate.offset - 0.1);
+        }
       }
     }
 
@@ -227,10 +236,10 @@ void camera_compute_movement(Camera* cam, u8 shader) {
   glm_vec3_scale(front, prompted_move[2], frontal);
   glm_vec3_add(cam->pos, frontal,  cam->pos);
 
-  if (map[(u8) old_z][(u8) old_x + 1].type != EMPTY && ((u8) (cam->pos[0] + 0.1)) == ((u8) old_x + 1)) cam->pos[0] = old_x;
-  if (map[(u8) old_z][(u8) old_x - 1].type != EMPTY && ((u8) (cam->pos[0] - 0.1)) == ((u8) old_x - 1)) cam->pos[0] = old_x;
-  if (map[(u8) old_z + 1][(u8) old_x].type != EMPTY && ((u8) (cam->pos[2] + 0.1)) == ((u8) old_z + 1)) cam->pos[2] = old_z;
-  if (map[(u8) old_z - 1][(u8) old_x].type != EMPTY && ((u8) (cam->pos[2] - 0.1)) == ((u8) old_z - 1)) cam->pos[2] = old_z;
+  if ((map[(u8) old_z][(u8) old_x + 1].type != EMPTY && (map[(u8) old_z][(u8) old_x + 1].type != GATE || map[(u8) old_z][(u8) old_x + 1].data.gate.offset < 2.9)) && ((u8) (cam->pos[0] + 0.1)) == ((u8) old_x + 1)) cam->pos[0] = old_x;
+  if ((map[(u8) old_z][(u8) old_x - 1].type != EMPTY && (map[(u8) old_z][(u8) old_x - 1].type != GATE || map[(u8) old_z][(u8) old_x - 1].data.gate.offset < 2.9)) && ((u8) (cam->pos[0] - 0.1)) == ((u8) old_x - 1)) cam->pos[0] = old_x;
+  if ((map[(u8) old_z + 1][(u8) old_x].type != EMPTY && (map[(u8) old_z + 1][(u8) old_x].type != GATE || map[(u8) old_z + 1][(u8) old_x].data.gate.offset < 2.9)) && ((u8) (cam->pos[2] + 0.1)) == ((u8) old_z + 1)) cam->pos[2] = old_z;
+  if ((map[(u8) old_z - 1][(u8) old_x].type != EMPTY && (map[(u8) old_z - 1][(u8) old_x].type != GATE || map[(u8) old_z - 1][(u8) old_x].data.gate.offset < 2.9)) && ((u8) (cam->pos[2] - 0.1)) == ((u8) old_z - 1)) cam->pos[2] = old_z;
 
   generate_view_mat(cam, shader);
 }
@@ -272,7 +281,16 @@ void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
 
   while (xz_dist(pos, origin) < closest_mirror_dist) {
     if (map[(u8) pos[2]][(u8) pos[0]].type == WALL) break;
-    if (map[(u8) pos[2]][(u8) pos[0]].type == PILLAR) map[(u8) pos[2]][(u8) pos[0]].data.pillar.active = 1;
+    if (map[(u8) pos[2]][(u8) pos[0]].type == PILLAR) {
+      map[(u8) pos[2]][(u8) pos[0]].data.pillar.active = 1;
+      i8 gate_id = map[(u8) pos[2]][(u8) pos[0]].data.pillar.gate_id;
+      if (gate_id != -1) {
+        for (u8 y = 0; y < LEN(map); y++)
+          for (u8 x = 0; x < LEN(map[0]); x++)
+            if (map[y][x].type == GATE && map[y][x].data.gate.id == gate_id)
+              map[y][x].data.gate.active = 1;
+      }
+    }
 
     glm_vec3_add(pos, front, pos);
   }
@@ -293,7 +311,16 @@ void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
 void compute_laser() {
   for (u8 y = 0; y < LEN(map); y++)
     for (u8 x = 0; x < LEN(map[0]); x++)
-      if (map[y][x].type == PILLAR) map[y][x].data.pillar.active = 0;
+      if (map[y][x].type == PILLAR) {
+        map[y][x].data.pillar.active = 0;
+        i8 gate_id = map[y][x].data.pillar.gate_id;
+        if (gate_id != -1) {
+          for (u8 yy = 0; yy < LEN(map); yy++)
+            for (u8 xx = 0; xx < LEN(map[0]); xx++)
+              if (map[yy][xx].type == GATE && map[yy][xx].data.gate.id == gate_id) 
+                map[yy][xx].data.gate.active = 0;
+        }
+      }
 
   beam_c = 0;
   create_beam(laser.pos, laser.rot, -1);
