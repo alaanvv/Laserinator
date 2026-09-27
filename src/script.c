@@ -20,8 +20,8 @@ void place_mirror();
 CanvasConfig config = { 
   .title = "LASERINATOR",
   .capture_mouse = 1, 
-  .fullscreen = 0,
-  .screen_size = 0.5,
+  .fullscreen = 1,
+  .screen_size = 1,
   .clear_color = BLACK 
 };
 
@@ -94,7 +94,7 @@ int main() {
 
   mirrors[mirror_c++] = (Mirror) { { 3.5, 0, 1.5 }, PI4 };
   mirrors[mirror_c++] = (Mirror) { { 4.5, 0, 1.5 }, PI4 };
-  mirrors[mirror_c++] = (Mirror) { { 5.5, 0, 1.5 }, PI4 };
+
   compute_laser();
 
   while (!glfwWindowShouldClose(cam.window)) {
