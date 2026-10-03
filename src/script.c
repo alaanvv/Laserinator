@@ -71,7 +71,10 @@ u8 click_view = 0;
 u32 shader;
 u32 hud_shader;
 
+Model* mo_cube;
 Model* mo_wall;
+Model* mo_pillar_base_off;
+Model* mo_pillar_base_on;
 Model* mo_pillar_off;
 Model* mo_pillar_on;
 Model* mo_laser;
@@ -105,12 +108,15 @@ int main() {
   lowres_fbo = canvas_create_FBO(cam.width * UPSCALE, cam.height * UPSCALE, GL_NEAREST, GL_NEAREST);
   click_fbo  = canvas_create_FBO(cam.width, cam.height, GL_NEAREST, GL_NEAREST);
 
-  mo_wall       = model_create("wall",   (Material) { WHITE,       0.5, 1.6, 1.0, .lig = 0 });
-  mo_pillar_off = model_create("wall",   (Material) { DEEP_RED,    0.5, 1.6, 0.3, .lig = 0 });
-  mo_pillar_on  = model_create("wall",   (Material) { DEEP_GREEN,  0.5, 2.6, 0.3, .lig = 1 });
-  mo_laser      = model_create("laser",  (Material) { DEEP_PURPLE, 0.5, 1.6, 1.0, .lig = 0 });
-  mo_beam       = model_create("tower",  (Material) { DEEP_RED,    0.5, 1.6, 0.8, .lig = 1 });
-  mo_mirror     = model_create("mirror", (Material) { PASTEL_BLUE, 0.5, 1.6, 1.0, .lig = 0 });
+  mo_cube            = model_create("cube",   (Material) { WHITE,       0.5, 1.6, 1.0, .lig = 0 });
+  mo_wall            = model_create("wall",   (Material) { WHITE,       0.5, 1.6, 1.0, .lig = 0 });
+  mo_pillar_base_off = model_create("cube",   (Material) { DEEP_RED,    0.5, 1.6, 1.0, .lig = 0 });
+  mo_pillar_base_on  = model_create("cube",   (Material) { DEEP_GREEN,  0.5, 2.6, 1.0, .lig = 0 });
+  mo_pillar_off      = model_create("wall",   (Material) { DEEP_RED,    0.5, 1.6, 0.3, .lig = 0 });
+  mo_pillar_on       = model_create("wall",   (Material) { DEEP_GREEN,  0.5, 2.6, 0.3, .lig = 1 });
+  mo_laser           = model_create("laser",  (Material) { DEEP_PURPLE, 0.5, 1.6, 1.0, .lig = 0 });
+  mo_beam            = model_create("tower",  (Material) { DEEP_RED,    0.5, 1.6, 0.8, .lig = 1 });
+  mo_mirror          = model_create("mirror", (Material) { PASTEL_BLUE, 0.5, 1.6, 1.0, .lig = 0 });
 
   // ---
 
@@ -263,10 +269,12 @@ void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
   glm_vec3_scale(front, 0.1, front);
 
   while (xz_dist(pos, origin) < closest_mirror_dist) {
-    if (map_at((u8) pos[0], (u8) pos[2])->type == WALL) break;
-    if (map_at((u8) pos[0], (u8) pos[2])->type == PILLAR) {
-      map_at((u8) pos[0], (u8) pos[2])->d.pillar.active = 1;
-      i8 gate_id = map_at((u8) pos[0], (u8) pos[2])->id;
+    Cell* cell = map_at((u8) pos[0], (u8) pos[2]);
+    if (cell->type == WALL) break;
+    if (cell->type == GATE && cell->d.gate.active == 0) break;
+    if (cell->type == PILLAR) {
+      cell->d.pillar.active = 1;
+      i8 gate_id = cell->id;
       if (gate_id != -1) {
         for (u8 y = 0; y < map.height; y++)
           for (u8 x = 0; x < map.width; x++)
@@ -411,16 +419,17 @@ void draw_clickable(u32 shader, Model* model, vec3 info) {
 }
 
 void draw_floor() {
-  model_bind(mo_wall, shader);
-  glm_scale(mo_wall->model, VEC3((u8) map.width, 0.1, (u8) map.height));
-  model_draw(mo_wall, shader);
+  model_bind(mo_cube, shader);
+  glm_translate(mo_cube->model, VEC3(0, -1, 0));
+  glm_scale(mo_cube->model, VEC3((u8) map.width, 1, (u8) map.height));
+  model_draw(mo_cube, shader);
 }
 
 void draw_roof() {
-  model_bind(mo_wall, shader);
-  glm_translate(mo_wall->model, VEC3(0, 3, 0));
-  glm_scale(mo_wall->model, VEC3((u8) map.width, 0.1, (u8) map.height));
-  model_draw(mo_wall, shader);
+  model_bind(mo_cube, shader);
+  glm_translate(mo_cube->model, VEC3(0, 3, 0));
+  glm_scale(mo_cube->model, VEC3((u8) map.width, 1, (u8) map.height));
+  model_draw(mo_cube, shader);
 }
 
 void draw_wall(u8 x, u8 y) {
@@ -438,7 +447,16 @@ void draw_gate(u8 x, u8 y, f32 offset) {
 }
 
 void draw_pillar(u8 x, u8 y, u8 active) {
-  Model* model = active ? mo_pillar_on : mo_pillar_off;
+  Model* model = active ? mo_pillar_base_on : mo_pillar_base_off;
+  model_bind(model, shader);
+  glm_translate(model->model, VEC3(x - 0.025, 0, y - 0.025));
+  glm_scale(model->model, VEC3(1.05, 0.2, 1.05));
+  model_draw(model, shader);
+  model_bind(model, shader);
+  glm_translate(model->model, VEC3(x - 0.025, 2.8, y - 0.025));
+  glm_scale(model->model, VEC3(1.05, 0.2, 1.05));
+  model_draw(model, shader);
+  model = active ? mo_pillar_on : mo_pillar_off;
   model_bind(model, shader);
   glm_translate(model->model, VEC3(x, 0, y));
   model_draw(model, shader);

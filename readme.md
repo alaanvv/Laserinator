@@ -30,9 +30,9 @@
   - [x] Turn on/off
   - [x] Cast light
 - [x] Load map from file
-- [ ] Laser/gate collision
+- [x] Laser/gate collision
 - [x] Grab should have proximity restriction
 - [x] Fix mirror behind laser shooter collision
 - [ ] Labyrinth map
-- [ ] Solid part on pillars
+- [x] Solid part on pillars
 - [ ] Lamps
