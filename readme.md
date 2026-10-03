@@ -30,3 +30,6 @@
   - [x] Turn on/off
   - [x] Cast light
 - [x] Load map from file
+- [ ] Laser/gate collision
+- [ ] Grab should have proximity restriction
+- [x] Fix mirror behind laser shooter collision
