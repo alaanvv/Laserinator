@@ -198,6 +198,13 @@ u32 canvas_create_FBO(u16 width, u16 height, GLenum min, GLenum mag) {
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mag);
   glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, REN_TEX, 0);
 
+  GLuint depth;
+  glGenRenderbuffers(1, &depth);
+  glBindRenderbuffer(GL_RENDERBUFFER, depth);
+  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, depth);
+
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
   return FBO;
 }
 
@@ -784,6 +791,13 @@ Entity* entity_create(const c8* name, Material material) {
   VEC3_COPY(VEC3(0, 0, 0), entity->rot);
   entities[entities_size++] = entity;
   return entity;
+}
+
+Entity* entity_create_pos(const c8* name, Material material, vec3 pos, vec3 rot) {
+  Entity* e = entity_create("mirror", (Material) { PASTEL_BLUE, 0.5, 1.6, 1.0, .lig = 0 });
+  VEC3_COPY(VEC3(3.5, 0, 1.5), e->pos);
+  VEC3_COPY(VEC3(0, -PI4, 0), e->rot);
+  return e;
 }
 
 void entity_draw(Entity e, u32 shader) {

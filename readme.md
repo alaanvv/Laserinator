@@ -31,5 +31,8 @@
   - [x] Cast light
 - [x] Load map from file
 - [ ] Laser/gate collision
-- [ ] Grab should have proximity restriction
+- [x] Grab should have proximity restriction
 - [x] Fix mirror behind laser shooter collision
+- [ ] Labyrinth map
+- [ ] Solid part on pillars
+- [ ] Lamps
