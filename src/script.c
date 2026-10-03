@@ -332,6 +332,10 @@ void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
     xz_intersection[1] = 1;
     xz_intersection[2] = xz_intersection[0] * beam_slope + beam_offset;
 
+    f32 angle_to_intersection = atan2(xz_intersection[2] - origin[2], xz_intersection[0] - origin[0]);
+    angle_to_intersection = fmod(angle_to_intersection + TAU, TAU);
+
+    if (fabs(angle_to_intersection - fmod(rot + TAU, TAU)) > 0.1) continue;
     if (xz_dist(mirrors[m].pos, xz_intersection) > MIRROR_WIDTH / 2) continue;
 
     f32 dist = xz_dist(origin, xz_intersection);
