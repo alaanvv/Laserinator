@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 
+#define PI  3.14159
+#define TAU PI * 2
+
 #define PRINT(...) { printf(__VA_ARGS__); printf("\n"); }
 #define EXIT(...) { PRINT(__VA_ARGS__); exit(1); }
 

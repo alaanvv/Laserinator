@@ -1,5 +1,6 @@
 #include "canvas.h"
 #include "map.h"
+#include "utils.h"
 
 #define UPSCALE       0.1
 #define MAX_BEAMS     100
@@ -9,12 +10,39 @@
 #define FOV_MAX       PI2
 #define FOV_STEP      0.02
 
-void draw_clickable(u32 shader, Model* model, vec3 info);
+// ---
+
+typedef struct {
+  vec3 pos;
+  f32 rot;
+} Laser;
+
+typedef struct {
+  vec3 pos;
+  f32 rot, size;
+} Beam;
+
+typedef struct {
+  vec3 pos;
+  f32 rot;
+} Mirror;
+
+// ---
+
 void camera_compute_movement(Camera* cam, u8 shader);
 void char_press(GLFWwindow*, u32);
 void compute_laser();
 void place_laser();
 void place_mirror();
+void draw_floor();
+void draw_roof();
+void draw_wall(u8 x, u8 y);
+void draw_pillar(u8 x, u8 y, u8 active);
+void move_gate(Gate* gate);
+void draw_gate(u8 x, u8 y, f32 offset);
+void draw_laser();
+void draw_beam(u8 i);
+void draw_mirror(Mirror m, u8 i, u8 held);
 
 // ---
 
@@ -37,26 +65,22 @@ Camera cam = {
   .speed = 3
 };
 
-// ---
+u32 lowres_fbo, click_fbo;
+u8 click_view = 0;
 
-typedef struct {
-  vec3 pos;
-  f32 rot;
-} Laser;
+u32 shader;
+u32 hud_shader;
 
-typedef struct {
-  vec3 pos;
-  f32 rot, size;
-} Beam;
-
-typedef struct {
-  vec3 pos;
-  f32 rot;
-} Mirror;
+Model* mo_wall;
+Model* mo_pillar_off;
+Model* mo_pillar_on;
+Model* mo_laser;
+Model* mo_beam;
+Model* mo_mirror;
 
 // ---
 
-Laser laser = { { 1.5, 1, 1.5 } };
+Laser laser;
 Beam beams[MAX_BEAMS];
 Mirror mirrors[MAX_MIRRORS];
 
@@ -66,38 +90,35 @@ u8 mirror_c = 0;
 u8 holding_laser = 0;
 u8 holding_mirror = 0;
 
-u32 lowres_fbo, click_fbo;
-u8 click_view = 0;
-
 // ---
 
 int main() {
   canvas_init(&cam, config);
   glfwSetCharCallback(cam.window, char_press);
 
-  u32 shader = shader_create_program("obj");
+  shader = shader_create_program("obj");
   generate_proj_mat(&cam, shader);
   generate_view_mat(&cam, shader);
-
-  u32 hud_shader = shader_create_program("hud");
+  hud_shader = shader_create_program("hud");
   generate_ortho_mat(&cam, hud_shader);
 
   lowres_fbo = canvas_create_FBO(cam.width * UPSCALE, cam.height * UPSCALE, GL_NEAREST, GL_NEAREST);
   click_fbo  = canvas_create_FBO(cam.width, cam.height, GL_NEAREST, GL_NEAREST);
 
-  Model* mo_wall       = model_create("cube",   (Material) { WHITE,       0.5, 1.6, 1.0, .lig = 0 });
-  Model* mo_pillar_off = model_create("cube",   (Material) { DEEP_RED,    0.5, 1.6, 0.3, .lig = 0 });
-  Model* mo_pillar_on  = model_create("cube",   (Material) { DEEP_GREEN,  0.5, 2.6, 0.3, .lig = 1 });
-  Model* mo_laser      = model_create("laser",  (Material) { DEEP_PURPLE, 0.5, 1.6, 1.0, .lig = 0 });
-  Model* mo_laser_u    = model_create("laser",  (Material) { DEEP_PURPLE, 0.5, 1.6, 0.2, .lig = 0 });
-  Model* mo_beam       = model_create("tower",  (Material) { DEEP_RED,    0.5, 1.6, 0.8, .lig = 1 });
-  Model* mo_mirror     = model_create("mirror", (Material) { PASTEL_BLUE, 0.5, 1.6, 1.0, .lig = 0 });
-  Model* mo_mirror_u   = model_create("mirror", (Material) { PASTEL_BLUE, 0.5, 1.6, 0.2, .lig = 0 });
+  mo_wall       = model_create("wall",   (Material) { WHITE,       0.5, 1.6, 1.0, .lig = 0 });
+  mo_pillar_off = model_create("wall",   (Material) { DEEP_RED,    0.5, 1.6, 0.3, .lig = 0 });
+  mo_pillar_on  = model_create("wall",   (Material) { DEEP_GREEN,  0.5, 2.6, 0.3, .lig = 1 });
+  mo_laser      = model_create("laser",  (Material) { DEEP_PURPLE, 0.5, 1.6, 1.0, .lig = 0 });
+  mo_beam       = model_create("tower",  (Material) { DEEP_RED,    0.5, 1.6, 0.8, .lig = 1 });
+  mo_mirror     = model_create("mirror", (Material) { PASTEL_BLUE, 0.5, 1.6, 1.0, .lig = 0 });
+
+  // ---
 
   read_map("map/map.txt");
 
-  mirrors[mirror_c++] = (Mirror) { { 3.5, 0, 1.5 }, PI4 };
-  mirrors[mirror_c++] = (Mirror) { { 4.5, 0, 1.5 }, PI4 };
+  VEC3_COPY(VEC3(1.5, 1, 1.5), laser.pos);
+  mirrors[mirror_c++] = (Mirror) { { 3.5, 0,  1.5 }, PI4 };
+  mirrors[mirror_c++] = (Mirror) { { 4.5, 0,  1.5 }, PI4 };
   mirrors[mirror_c++] = (Mirror) { { 3.5, 0, 14.5 }, 0.1 };
 
   compute_laser();
@@ -109,89 +130,33 @@ int main() {
     if (holding_laser || holding_mirror) cam.fov = MIN(FOV_MAX,  cam.fov + FOV_STEP);
     else                                 cam.fov = MAX(FOV_BASE, cam.fov - FOV_STEP);
 
-    glUseProgram(shader);
+    // ---
+
     generate_proj_mat(&cam, shader);
     canvas_set_pnt_lig(shader, (PntLig) { WHITE, { cam.pos[0], cam.pos[1], cam.pos[2] }, 1, 0.22, 0.2 }, 0);
 
-    // Floor
-    model_bind(mo_wall, shader);
-    glm_scale(mo_wall->model, VEC3((u8) map.width, 0.1, (u8) map.height));
-    model_draw(mo_wall, shader);
+    draw_floor();
+    draw_roof();
+    draw_laser();
 
-    // Roof
-    model_bind(mo_wall, shader);
-    glm_translate(mo_wall->model, VEC3(0, 3, 0));
-    glm_scale(mo_wall->model, VEC3((u8) map.width, 0.1, (u8) map.height));
-    model_draw(mo_wall, shader);
-
-    // Walls / Gates
-    for (u8 y = 0; y < map.height; y++) {
-      for (u8 x = 0; x < map.width; x++) {
-        if (map_at(x, y)->type == WALL || map_at(x, y)->type == GATE) {
-          model_bind(mo_wall, shader);
-          glm_translate(mo_wall->model, VEC3(x, map_at(x, y)->type == GATE ? -map_at(x, y)->d.gate.offset : 0, y));
-          glm_scale(mo_wall->model, VEC3(1, 3, 1));
-          model_draw(mo_wall, shader);
-          draw_clickable(shader, mo_wall, VEC3(0, 0, 0));
-        }
-        if (map_at(x, y)->type == GATE) {
-          if (map_at(x, y)->d.gate.active) map_at(x, y)->d.gate.offset = MIN(3, map_at(x, y)->d.gate.offset + 0.1);
-          else                            map_at(x, y)->d.gate.offset = MAX(0, map_at(x, y)->d.gate.offset - 0.1);
-        }
+    for (u8 x = 0; x < map.width; x++) {
+      for (u8 y = 0; y < map.height; y++) {
+        Cell* cell = map_at(x, y);
+        if (cell->type == WALL) { draw_wall(x, y); }
+        if (cell->type == GATE) { draw_gate(x, y, -cell->d.gate.offset); move_gate(&cell->d.gate); }
       }
     }
 
-    // Mirrors
-    for (u8 i = 0; i < mirror_c - holding_mirror; i++) {
-      model_bind(mo_mirror, shader);
-      glm_translate(mo_mirror->model, mirrors[i].pos);
-      glm_rotate(mo_mirror->model, mirrors[i].rot, VEC3(0, -1, 0));
-      model_draw(mo_mirror, shader);
-      draw_clickable(shader, mo_mirror, VEC3((f32) 1 / 2, (f32) i / MAX_MIRRORS, 1));
-    }
+    for (u8 i = 0; i < mirror_c - holding_mirror; i++) draw_mirror(mirrors[i], i, 0);
 
-    // Laser / Held laser
-    if (laser.pos[0]) {
-      Model* model = holding_laser ? mo_laser_u : mo_laser;
-      model_bind(model, shader);
-      glm_translate(model->model, VEC3(laser.pos[0], 0, laser.pos[2]));
-      glm_rotate(model->model, laser.rot, VEC3(0, -1, 0));
-      model_draw(model, shader);
-      draw_clickable(shader, model, VEC3(1, 0, 0));
-    }
+    for (u8 i = 0; i < beam_c; i++) draw_beam(i);
 
-    // Beams
-    for (u8 i = 0; i < beam_c; i++) {
-      model_bind(mo_beam, shader);
-      glm_translate(mo_beam->model, beams[i].pos);
-      glm_rotate(mo_beam->model, -PI2, VEC3(0, 0, 1));
-      glm_rotate(mo_beam->model, beams[i].rot, VEC3(1, 0, 0));
-      glm_scale(mo_beam->model, VEC3(0.1, beams[i].size, 0.1));
-      model_draw(mo_beam, shader);
-    }
+    if (holding_mirror) draw_mirror(mirrors[mirror_c - 1], mirror_c - 1, 1);
 
-    // Held mirror
-    if (holding_mirror) {
-      model_bind(mo_mirror_u, shader);
-      glm_translate(mo_mirror_u->model, mirrors[mirror_c - 1].pos);
-      glm_rotate(mo_mirror_u->model, mirrors[mirror_c - 1].rot, VEC3(0, -1, 0));
-      model_draw(mo_mirror_u, shader);
-    }
-
-    // Pillars
-    for (u8 y = 0; y < map.height; y++) {
-      for (u8 x = 0; x < map.width; x++) {
-        Model* model;
-        if (map_at(x, y)->type == PILLAR) model = map_at(x, y)->d.pillar.active ? mo_pillar_on : mo_pillar_off;
-        else continue;
-
-        model_bind(model, shader);
-        glm_translate(model->model, VEC3(x, 0, y));
-        glm_scale(model->model, VEC3(1, 3, 1));
-        model_draw(model, shader);
-        draw_clickable(shader, model, VEC3(0, 0, 0));
-      }
-    }
+    for (u8 x = 0; x < map.width; x++)
+      for (u8 y = 0; y < map.height; y++)
+        if (map_at(x, y)->type == PILLAR)
+          draw_pillar(x, y, map_at(x, y)->d.pillar.active);
 
     // HUD
     glUseProgram(hud_shader);
@@ -205,15 +170,16 @@ int main() {
     // Finish
     glUseProgram(shader);
     glfwSwapBuffers(cam.window);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     camera_compute_movement(&cam, shader);
     camera_handle_inputs(&cam, shader);
     glfwPollEvents();
     update_fps(&cam);
+
     glBindFramebuffer(GL_FRAMEBUFFER, click_fbo);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   }
 
   glfwTerminate();
@@ -222,25 +188,6 @@ int main() {
 
 // ---
 
-void draw_clickable(u32 shader, Model* model, vec3 info) {
-  static Material absolute    = { .alp = 1, .lig = 1 };
-  canvas_set_material(shader, absolute);
-  canvas_uni3f(shader, "MAT.COL", info[0], info[1], info[2]);
-  glBindFramebuffer(GL_FRAMEBUFFER, click_fbo);
-  model_draw(model, shader);
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-}
-
-f32 xz_angle(vec3 dir) {
-  dir[1] = 0;
-  glm_vec3_normalize(dir);
-  return fmod(atan2(dir[2], dir[0]) + TAU, TAU);
-}
-
-f32 xz_dist(vec3 a, vec3 b) {
-  return sqrt(pow(fabs(a[0] - b[0]), 2) + pow(fabs(a[2] - b[2]), 2));
-}
-
 void grab_mirror(u8 i) {
   for (u8 m = i; m < mirror_c - 1; m++)
     mirrors[m] = mirrors[m + 1];
@@ -248,12 +195,13 @@ void grab_mirror(u8 i) {
 
 void interact() {
   if (holding_laser) {
-    holding_laser = !holding_laser;
+    holding_laser = 0;
+    mo_laser->material.alp = 1;
     return;
   }
 
   if (holding_mirror) {
-    holding_mirror = !holding_mirror;
+    holding_mirror = 0;
     return;
   }
 
@@ -264,7 +212,8 @@ void interact() {
 
   if ((i8) roundf(buffer[0] * 2) == 2) {
     if (xz_dist(cam.pos, laser.pos) > 3) return;
-    holding_laser = !holding_laser;
+    holding_laser = 1;
+    mo_laser->material.alp = 0.2;
   }
   if ((i8) roundf(buffer[0] * 2) == 1) {
     u8 m_i = (i8) roundf(buffer[1] * MAX_MIRRORS);
@@ -272,44 +221,6 @@ void interact() {
     grab_mirror(m_i);
     holding_mirror = !holding_mirror;
   }
-}
-
-void camera_compute_movement(Camera* cam, u8 shader) {
-  // MOUSE BUTTON
-  static u8 mouse_down = 0;
-  if (glfwGetMouseButton(cam->window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE) mouse_down = 0;
-  if (glfwGetMouseButton(cam->window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS && !mouse_down) {
-    mouse_down = 1;
-    interact();
-  }
-
-  vec3 prompted_move = {
-    (glfwGetKey(cam->window, GLFW_KEY_D) == GLFW_PRESS ? cam->speed / cam->fps : 0) + (glfwGetKey(cam->window, GLFW_KEY_A) == GLFW_PRESS ? -cam->speed / cam->fps : 0), 0,
-    (glfwGetKey(cam->window, GLFW_KEY_W) == GLFW_PRESS ? cam->speed / cam->fps : 0) + (glfwGetKey(cam->window, GLFW_KEY_S) == GLFW_PRESS ? -cam->speed / cam->fps : 0)
-  };
-
-  if (!prompted_move[0] && !prompted_move[2]) return;
-
-  f32 old_x = cam->pos[0];
-  f32 old_z = cam->pos[2];
-
-  vec3 front = { cam->dir[0], 0, cam->dir[2] };
-  glm_vec3_normalize(front);
-
-  vec3 lateral;
-  glm_vec3_scale(cam->rig, prompted_move[0], lateral);
-  glm_vec3_add(cam->pos, lateral,  cam->pos);
-
-  vec3 frontal;
-  glm_vec3_scale(front, prompted_move[2], frontal);
-  glm_vec3_add(cam->pos, frontal,  cam->pos);
-
-  if ((map_at((u8) old_x + 1, (u8) old_z)->type != EMPTY && (map_at((u8) old_x + 1, (u8) old_z)->type != GATE || map_at((u8) old_x + 1, (u8) old_z)->d.gate.offset < 2.9)) && ((u8) (cam->pos[0] + 0.1)) == ((u8) old_x + 1)) cam->pos[0] = old_x;
-  if ((map_at((u8) old_x - 1, (u8) old_z)->type != EMPTY && (map_at((u8) old_x - 1, (u8) old_z)->type != GATE || map_at((u8) old_x - 1, (u8) old_z)->d.gate.offset < 2.9)) && ((u8) (cam->pos[0] - 0.1)) == ((u8) old_x - 1)) cam->pos[0] = old_x;
-  if ((map_at((u8) old_x, (u8) old_z + 1)->type != EMPTY && (map_at((u8) old_x, (u8) old_z + 1)->type != GATE || map_at((u8) old_x, (u8) old_z + 1)->d.gate.offset < 2.9)) && ((u8) (cam->pos[2] + 0.1)) == ((u8) old_z + 1)) cam->pos[2] = old_z;
-  if ((map_at((u8) old_x, (u8) old_z - 1)->type != EMPTY && (map_at((u8) old_x, (u8) old_z - 1)->type != GATE || map_at((u8) old_x, (u8) old_z - 1)->d.gate.offset < 2.9)) && ((u8) (cam->pos[2] - 0.1)) == ((u8) old_z - 1)) cam->pos[2] = old_z;
-
-  generate_view_mat(cam, shader);
 }
 
 void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
@@ -430,6 +341,13 @@ void place_mirror() {
   compute_laser();
 }
 
+void move_gate(Gate* gate) {
+  if (gate->active) gate->offset = MIN(3, gate->offset + 0.1);
+  else              gate->offset = MAX(0, gate->offset - 0.1);
+}
+
+// ---
+
 void char_press(GLFWwindow* window, u32 key) {
   if (key == 'e') interact();
 
@@ -442,4 +360,114 @@ void char_press(GLFWwindow* window, u32 key) {
     printf("P.DIR = (%.2f, %.2f, %.2f)\n", cam.dir[0], cam.dir[1], cam.dir[2]);
     printf("P.ROT = %.2f\n", xz_angle(front));
   }
+}
+
+void camera_compute_movement(Camera* cam, u8 shader) {
+  static u8 mouse_down = 0;
+  if (glfwGetMouseButton(cam->window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE) mouse_down = 0;
+  if (glfwGetMouseButton(cam->window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS && !mouse_down) {
+    mouse_down = 1;
+    interact();
+  }
+
+  vec3 prompted_move = {
+    (glfwGetKey(cam->window, GLFW_KEY_D) == GLFW_PRESS ? cam->speed / cam->fps : 0) + (glfwGetKey(cam->window, GLFW_KEY_A) == GLFW_PRESS ? -cam->speed / cam->fps : 0), 0,
+    (glfwGetKey(cam->window, GLFW_KEY_W) == GLFW_PRESS ? cam->speed / cam->fps : 0) + (glfwGetKey(cam->window, GLFW_KEY_S) == GLFW_PRESS ? -cam->speed / cam->fps : 0)
+  };
+
+  if (!prompted_move[0] && !prompted_move[2]) return;
+
+  f32 old_x = cam->pos[0];
+  f32 old_z = cam->pos[2];
+
+  vec3 front = { cam->dir[0], 0, cam->dir[2] };
+  glm_vec3_normalize(front);
+
+  vec3 lateral;
+  glm_vec3_scale(cam->rig, prompted_move[0], lateral);
+  glm_vec3_add(cam->pos, lateral,  cam->pos);
+
+  vec3 frontal;
+  glm_vec3_scale(front, prompted_move[2], frontal);
+  glm_vec3_add(cam->pos, frontal,  cam->pos);
+
+  if ((map_at((u8) old_x + 1, (u8) old_z)->type != EMPTY && (map_at((u8) old_x + 1, (u8) old_z)->type != GATE || map_at((u8) old_x + 1, (u8) old_z)->d.gate.offset < 2.9)) && ((u8) (cam->pos[0] + 0.1)) == ((u8) old_x + 1)) cam->pos[0] = old_x;
+  if ((map_at((u8) old_x - 1, (u8) old_z)->type != EMPTY && (map_at((u8) old_x - 1, (u8) old_z)->type != GATE || map_at((u8) old_x - 1, (u8) old_z)->d.gate.offset < 2.9)) && ((u8) (cam->pos[0] - 0.1)) == ((u8) old_x - 1)) cam->pos[0] = old_x;
+  if ((map_at((u8) old_x, (u8) old_z + 1)->type != EMPTY && (map_at((u8) old_x, (u8) old_z + 1)->type != GATE || map_at((u8) old_x, (u8) old_z + 1)->d.gate.offset < 2.9)) && ((u8) (cam->pos[2] + 0.1)) == ((u8) old_z + 1)) cam->pos[2] = old_z;
+  if ((map_at((u8) old_x, (u8) old_z - 1)->type != EMPTY && (map_at((u8) old_x, (u8) old_z - 1)->type != GATE || map_at((u8) old_x, (u8) old_z - 1)->d.gate.offset < 2.9)) && ((u8) (cam->pos[2] - 0.1)) == ((u8) old_z - 1)) cam->pos[2] = old_z;
+
+  generate_view_mat(cam, shader);
+}
+
+// Draw functions
+
+void draw_clickable(u32 shader, Model* model, vec3 info) {
+  static Material absolute    = { .alp = 1, .lig = 1 };
+  canvas_set_material(shader, absolute);
+  canvas_uni3f(shader, "MAT.COL", info[0], info[1], info[2]);
+  glBindFramebuffer(GL_FRAMEBUFFER, click_fbo);
+  model_draw(model, shader);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void draw_floor() {
+  model_bind(mo_wall, shader);
+  glm_scale(mo_wall->model, VEC3((u8) map.width, 0.1, (u8) map.height));
+  model_draw(mo_wall, shader);
+}
+
+void draw_roof() {
+  model_bind(mo_wall, shader);
+  glm_translate(mo_wall->model, VEC3(0, 3, 0));
+  glm_scale(mo_wall->model, VEC3((u8) map.width, 0.1, (u8) map.height));
+  model_draw(mo_wall, shader);
+}
+
+void draw_wall(u8 x, u8 y) {
+  model_bind(mo_wall, shader);
+  glm_translate(mo_wall->model, VEC3(x, 0, y));
+  model_draw(mo_wall, shader);
+  draw_clickable(shader, mo_wall, VEC3(0, 0, 0));
+}
+
+void draw_gate(u8 x, u8 y, f32 offset) {
+  model_bind(mo_wall, shader);
+  glm_translate(mo_wall->model, VEC3(x, offset, y));
+  model_draw(mo_wall, shader);
+  draw_clickable(shader, mo_wall, VEC3(0, 0, 0));
+}
+
+void draw_pillar(u8 x, u8 y, u8 active) {
+  Model* model = active ? mo_pillar_on : mo_pillar_off;
+  model_bind(model, shader);
+  glm_translate(model->model, VEC3(x, 0, y));
+  model_draw(model, shader);
+  draw_clickable(shader, model, VEC3(0, 0, 0));
+}
+
+void draw_laser() {
+  Model* model = holding_laser ? mo_laser : mo_laser;
+  model_bind(model, shader);
+  glm_translate(model->model, VEC3(laser.pos[0], 0, laser.pos[2]));
+  glm_rotate(model->model, laser.rot, VEC3(0, -1, 0));
+  model_draw(model, shader);
+  draw_clickable(shader, model, VEC3(1, 0, 0));
+}
+
+void draw_beam(u8 i) {
+  model_bind(mo_beam, shader);
+  glm_translate(mo_beam->model, beams[i].pos);
+  glm_rotate(mo_beam->model, -PI2, VEC3(0, 0, 1));
+  glm_rotate(mo_beam->model, beams[i].rot, VEC3(1, 0, 0));
+  glm_scale(mo_beam->model, VEC3(0.1, beams[i].size, 0.1));
+  model_draw(mo_beam, shader);
+}
+
+void draw_mirror(Mirror m, u8 i, u8 held) {
+  model_bind(mo_mirror, shader);
+  if (held) canvas_uni1f(shader, "MAT.ALP", 0.2);
+  glm_translate(mo_mirror->model, m.pos);
+  glm_rotate(mo_mirror->model, m.rot, VEC3(0, -1, 0));
+  model_draw(mo_mirror, shader);
+  draw_clickable(shader, mo_mirror, VEC3((f32) 1 / 2, (f32) i / MAX_MIRRORS, 1));
 }
