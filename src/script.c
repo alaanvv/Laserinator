@@ -106,6 +106,9 @@ int main() {
   generate_ortho_mat(&cam, hud_shader);
   shader = shader_create_program("obj");
   generate_proj_mat(&cam, shader);
+  glm_vec3_copy(VEC3(cos(cam.yaw - PI2) * cos(cam.pitch), sin(cam.pitch), sin(cam.yaw - PI2) * cos(cam.pitch)), cam.dir);
+  glm_vec3_copy(VEC3(cos(cam.yaw) * cos(cam.pitch), 0, sin(cam.yaw) * cos(cam.pitch)), cam.rig);
+  glm_normalize(cam.rig);
   generate_view_mat(&cam, shader);
 
   lowres_fbo = canvas_create_FBO(cam.width * UPSCALE, cam.height * UPSCALE, GL_NEAREST, GL_NEAREST);
@@ -144,7 +147,7 @@ int main() {
     // ---
 
     generate_proj_mat(&cam, shader);
-    canvas_set_pnt_lig(shader, (PntLig) { WHITE, { cam.pos[0], cam.pos[1], cam.pos[2] }, 1, 0.22, 0.2, 1000 }, 0);
+    canvas_set_pnt_lig(shader, (PntLig) { WHITE, { cam.pos[0], cam.pos[1], cam.pos[2] }, 1, 0.2, 0.3, 1000 }, 0);
 
     draw_floor();
     draw_roof();
@@ -157,6 +160,8 @@ int main() {
       }
     }
 
+    if (!holding_laser) draw_laser();
+
     for (u8 i = 0; i < mirror_c - holding_mirror; i++) draw_mirror(mirrors[i], i, 0);
 
     for (u8 i = 0; i < beam_c; i++) draw_beam(i);
@@ -168,9 +173,11 @@ int main() {
           draw_pillar(x, y, map_at(x, y)->d.pillar.active);
 
     if (holding_mirror) draw_mirror(mirrors[mirror_c - 1], mirror_c - 1, 1);
-    if (holding_laser) glDisable(GL_DEPTH_TEST);
-    draw_laser();
-    glEnable(GL_DEPTH_TEST);
+    if (holding_laser) {
+      glDisable(GL_DEPTH_TEST);
+      draw_laser();
+      glEnable(GL_DEPTH_TEST);
+    }
 
     // Lowres
     if (click_view) glBlitNamedFramebuffer(click_fbo, 0, 0, 0, cam.width, cam.height, 0, 0, cam.width, cam.height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
@@ -350,8 +357,8 @@ void apply_pillar_lights() {
     for (u8 y = 0; y < map.height; y++)
       if (map_at(x, y)->type == PILLAR) {
         PntLig lig;
-        if (map_at(x, y)->d.pillar.active) lig = (PntLig) { DEEP_GREEN, { x + 0.5, 1.5, y + 0.5 }, 1, 2.5, 5.0, 3 };
-        else                               lig = (PntLig) { DEEP_RED,   { x + 0.5, 1.5, y + 0.5 }, 1, 2.5, 5.0, 3 };
+        if (map_at(x, y)->d.pillar.active) lig = (PntLig) { DEEP_GREEN, { x + 0.5, 1.5, y + 0.5 }, 1, 3, 4, 3 };
+        else                               lig = (PntLig) { DEEP_RED,   { x + 0.5, 1.5, y + 0.5 }, 1, 3, 4, 3 };
         canvas_set_pnt_lig(shader, lig, pi++);
       }
 }
@@ -461,6 +468,8 @@ void camera_compute_movement(Camera* cam, u8 shader) {
   if ((map_at((u8) old_x - 1, (u8) old_z)->type != EMPTY && (map_at((u8) old_x - 1, (u8) old_z)->type != GATE || map_at((u8) old_x - 1, (u8) old_z)->d.gate.offset < 2.9)) && ((u8) (cam->pos[0] - 0.1)) == ((u8) old_x - 1)) cam->pos[0] = old_x;
   if ((map_at((u8) old_x, (u8) old_z + 1)->type != EMPTY && (map_at((u8) old_x, (u8) old_z + 1)->type != GATE || map_at((u8) old_x, (u8) old_z + 1)->d.gate.offset < 2.9)) && ((u8) (cam->pos[2] + 0.1)) == ((u8) old_z + 1)) cam->pos[2] = old_z;
   if ((map_at((u8) old_x, (u8) old_z - 1)->type != EMPTY && (map_at((u8) old_x, (u8) old_z - 1)->type != GATE || map_at((u8) old_x, (u8) old_z - 1)->d.gate.offset < 2.9)) && ((u8) (cam->pos[2] - 0.1)) == ((u8) old_z - 1)) cam->pos[2] = old_z;
+
+  if ((map_at((u8) cam->pos[0], (u8) cam->pos[2])->type != EMPTY && (map_at((u8) cam->pos[0], (u8) cam->pos[2])->type != GATE || map_at((u8) cam->pos[0], (u8) cam->pos[2])->d.gate.offset < 2.9))) { cam->pos[0] = old_x; cam->pos[2] = old_z; }
 
   generate_view_mat(cam, shader);
 }
