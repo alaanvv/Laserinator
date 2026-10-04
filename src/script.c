@@ -29,6 +29,7 @@ typedef struct {
 
 // ---
 
+void apply_pillar_lights();
 void camera_compute_movement(Camera* cam, u8 shader);
 void char_press(GLFWwindow*, u32);
 void compute_laser();
@@ -99,14 +100,16 @@ int main() {
   canvas_init(&cam, config);
   glfwSetCharCallback(cam.window, char_press);
 
+  hud_shader = shader_create_program("hud");
+  generate_ortho_mat(&cam, hud_shader);
   shader = shader_create_program("obj");
   generate_proj_mat(&cam, shader);
   generate_view_mat(&cam, shader);
-  hud_shader = shader_create_program("hud");
-  generate_ortho_mat(&cam, hud_shader);
 
   lowres_fbo = canvas_create_FBO(cam.width * UPSCALE, cam.height * UPSCALE, GL_NEAREST, GL_NEAREST);
   click_fbo  = canvas_create_FBO(cam.width, cam.height, GL_NEAREST, GL_NEAREST);
+
+  Font font = { texture( "font"), 20, 5, 7.0 / 5 };
 
   mo_cube            = model_create("cube",   (Material) { WHITE,       0.5, 1.6, 1.0, .lig = 0 });
   mo_wall            = model_create("wall",   (Material) { WHITE,       0.5, 1.6, 1.0, .lig = 0 });
@@ -120,12 +123,13 @@ int main() {
 
   // ---
 
-  read_map("map/lab.txt");
+  read_map("map/map.txt");
 
-  VEC3_COPY(VEC3(11.5, 2, 21.5), cam.pos);
-  VEC3_COPY(VEC3(11.5, 1, 21.5), laser.pos);
+  VEC3_COPY(VEC3(1.5, 1, 1.5), laser.pos);
 
   compute_laser();
+
+  apply_pillar_lights();
 
   while (!glfwWindowShouldClose(cam.window)) {
     if (holding_laser)  place_laser();
@@ -165,6 +169,10 @@ int main() {
     // HUD
     glUseProgram(hud_shader);
     if (!holding_laser && !holding_mirror) hud_draw_rec(hud_shader, 0, (vec3) BLACK, cam.width / 2 - 10, cam.height / 2 - 10, 20, 20);
+    c8 buffer[10];
+    sprintf(buffer, "%d FPS", (i32) cam.fps);
+    hud_draw_text(hud_shader, buffer, 10, cam.height - font.size * font.ratio - 10, font, (vec3) WHITE);
+    hud_draw_text(hud_shader, buffer, 10, 10, font, (vec3) WHITE);
 
     // Lowres
     if (click_view) glBlitNamedFramebuffer(click_fbo, 0, 0, 0, cam.width, cam.height, 0, 0, cam.width, cam.height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
@@ -273,6 +281,7 @@ void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
     if (cell->type == GATE && cell->d.gate.active == 0) break;
     if (cell->type == PILLAR) {
       cell->d.pillar.active = 1;
+      apply_pillar_lights();
       i8 gate_id = cell->id;
       if (gate_id != -1) {
         for (u8 y = 0; y < map.height; y++)
@@ -303,6 +312,7 @@ void compute_laser() {
     for (u8 x = 0; x < map.width; x++)
       if (map_at(x, y)->type == PILLAR) {
         map_at(x, y)->d.pillar.active = 0;
+        apply_pillar_lights();
         i8 gate_id = map_at(x, y)->id;
         if (gate_id != 0) {
           for (u8 yy = 0; yy < map.height; yy++)
@@ -314,6 +324,18 @@ void compute_laser() {
 
   beam_c = 0;
   create_beam(laser.pos, laser.rot, -1);
+}
+
+void apply_pillar_lights() {
+  u8 pi = 1;
+  for (u8 x = 0; x < map.width; x++)
+    for (u8 y = 0; y < map.height; y++)
+      if (map_at(x, y)->type == PILLAR) {
+        PntLig lig;
+        if (map_at(x, y)->d.pillar.active) lig = (PntLig) { DEEP_GREEN, { x + 0.5, 1.5, y + 0.5 }, 1, 2.5, 5.0, 3 };
+        else                               lig = (PntLig) { DEEP_RED,   { x + 0.5, 1.5, y + 0.5 }, 1, 2.5, 5.0, 3 };
+        canvas_set_pnt_lig(shader, lig, pi++);
+      }
 }
 
 void place_laser() {

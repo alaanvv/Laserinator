@@ -35,4 +35,4 @@
 - [x] Fix mirror behind laser shooter collision
 - [x] Labyrinth map
 - [x] Solid part on pillars
-- [ ] Lamps
+- [x] Lamps
