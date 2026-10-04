@@ -120,12 +120,10 @@ int main() {
 
   // ---
 
-  read_map("map/map.txt");
+  read_map("map/lab.txt");
 
-  VEC3_COPY(VEC3(1.5, 1, 1.5), laser.pos);
-  mirrors[mirror_c++] = (Mirror) { { 3.5, 0,  1.5 }, PI4 };
-  mirrors[mirror_c++] = (Mirror) { { 4.5, 0,  1.5 }, PI4 };
-  mirrors[mirror_c++] = (Mirror) { { 3.5, 0, 14.5 }, 0.1 };
+  VEC3_COPY(VEC3(11.5, 2, 21.5), cam.pos);
+  VEC3_COPY(VEC3(11.5, 1, 21.5), laser.pos);
 
   compute_laser();
 
@@ -251,7 +249,8 @@ void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
     f32 angle_to_intersection = atan2(xz_intersection[2] - origin[2], xz_intersection[0] - origin[0]);
     angle_to_intersection = fmod(angle_to_intersection + TAU, TAU);
 
-    if (fabs(angle_to_intersection - fmod(rot + TAU, TAU)) > 0.1) continue;
+
+    if (fmod(fabs(angle_to_intersection - fmod(rot + TAU, TAU)) + TAU, TAU) > 0.1) continue;
     if (xz_dist(mirrors[m].pos, xz_intersection) > MIRROR_WIDTH / 2) continue;
 
     f32 dist = xz_dist(origin, xz_intersection);
@@ -359,6 +358,11 @@ void move_gate(Gate* gate) {
 void char_press(GLFWwindow* window, u32 key) {
   if (key == 'e') interact();
 
+  if (key == 'q') {
+    mirror_c++;
+    holding_mirror = 1;
+  }
+
   if (key == ' ') {
     click_view = !click_view;
     vec3 front = { cam.dir[0], 0, cam.dir[2] };
@@ -367,6 +371,8 @@ void char_press(GLFWwindow* window, u32 key) {
     printf("P.X %.2f P.Y %.2f\n", cam.pos[0], cam.pos[2]);
     printf("P.DIR = (%.2f, %.2f, %.2f)\n", cam.dir[0], cam.dir[1], cam.dir[2]);
     printf("P.ROT = %.2f\n", xz_angle(front));
+    for (u8 i = 0; i < mirror_c; i++)
+      printf("mirrors[mirror_c++] = (Mirror) { { %.3f, 0,  %.3f }, %.3f };\n", mirrors[i].pos[0], mirrors[i].pos[2], mirrors[i].rot);
   }
 }
 

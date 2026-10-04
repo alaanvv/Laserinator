@@ -33,6 +33,6 @@
 - [x] Laser/gate collision
 - [x] Grab should have proximity restriction
 - [x] Fix mirror behind laser shooter collision
-- [ ] Labyrinth map
+- [x] Labyrinth map
 - [x] Solid part on pillars
 - [ ] Lamps
