@@ -15,6 +15,7 @@
 typedef struct {
   vec3 pos;
   f32 rot;
+  u8 valid;
 } Laser;
 
 typedef struct {
@@ -90,6 +91,7 @@ Mirror mirrors[MAX_MIRRORS];
 
 u8 beam_c = 0;
 u8 mirror_c = 0;
+u8 mirror_valid = 1;
 
 u8 holding_laser = 0;
 u8 holding_mirror = 0;
@@ -126,6 +128,7 @@ int main() {
   read_map("map/map.txt");
 
   VEC3_COPY(VEC3(1.5, 1, 1.5), laser.pos);
+  laser.valid = 1;
 
   compute_laser();
 
@@ -145,7 +148,6 @@ int main() {
 
     draw_floor();
     draw_roof();
-    draw_laser();
 
     for (u8 x = 0; x < map.width; x++) {
       for (u8 y = 0; y < map.height; y++) {
@@ -159,12 +161,21 @@ int main() {
 
     for (u8 i = 0; i < beam_c; i++) draw_beam(i);
 
-    if (holding_mirror) draw_mirror(mirrors[mirror_c - 1], mirror_c - 1, 1);
 
     for (u8 x = 0; x < map.width; x++)
       for (u8 y = 0; y < map.height; y++)
         if (map_at(x, y)->type == PILLAR)
           draw_pillar(x, y, map_at(x, y)->d.pillar.active);
+
+    if (holding_mirror) draw_mirror(mirrors[mirror_c - 1], mirror_c - 1, 1);
+    if (holding_laser) glDisable(GL_DEPTH_TEST);
+    draw_laser();
+    glEnable(GL_DEPTH_TEST);
+
+    // Lowres
+    if (click_view) glBlitNamedFramebuffer(click_fbo, 0, 0, 0, cam.width, cam.height, 0, 0, cam.width, cam.height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    glBlitNamedFramebuffer(0, lowres_fbo, 0, 0, cam.width, cam.height, 0, 0, cam.width * UPSCALE, cam.height * UPSCALE, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    glBlitNamedFramebuffer(lowres_fbo, 0, 0, 0, cam.width * UPSCALE, cam.height * UPSCALE, 0, 0, cam.width, cam.height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
     // HUD
     glUseProgram(hud_shader);
@@ -173,11 +184,6 @@ int main() {
     sprintf(buffer, "%d FPS", (i32) cam.fps);
     hud_draw_text(hud_shader, buffer, 10, cam.height - font.size * font.ratio - 10, font, (vec3) WHITE);
     hud_draw_text(hud_shader, buffer, 10, 10, font, (vec3) WHITE);
-
-    // Lowres
-    if (click_view) glBlitNamedFramebuffer(click_fbo, 0, 0, 0, cam.width, cam.height, 0, 0, cam.width, cam.height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-    glBlitNamedFramebuffer(0, lowres_fbo, 0, 0, cam.width, cam.height, 0, 0, cam.width * UPSCALE, cam.height * UPSCALE, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-    glBlitNamedFramebuffer(lowres_fbo, 0, 0, 0, cam.width * UPSCALE, cam.height * UPSCALE, 0, 0, cam.width, cam.height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
     // Finish
     glUseProgram(shader);
@@ -207,12 +213,22 @@ void grab_mirror(u8 i) {
 
 void interact() {
   if (holding_laser) {
+    if (!laser.valid) {
+      play_audio("invalid");
+      return;
+    }
+    play_audio("place");
     holding_laser = 0;
     mo_laser->material.alp = 1;
     return;
   }
 
   if (holding_mirror) {
+    if (!mirror_valid) {
+      play_audio("invalid");
+      return;
+    }
+    play_audio("place");
     holding_mirror = 0;
     return;
   }
@@ -224,12 +240,14 @@ void interact() {
 
   if ((i8) roundf(buffer[0] * 2) == 2) {
     if (xz_dist(cam.pos, laser.pos) > 3) return;
+    play_audio("grab");
     holding_laser = 1;
     mo_laser->material.alp = 0.2;
   }
   if ((i8) roundf(buffer[0] * 2) == 1) {
     u8 m_i = (i8) roundf(buffer[1] * MAX_MIRRORS);
     if (xz_dist(cam.pos, mirrors[m_i].pos) > 3) return;
+    play_audio("grab");
     grab_mirror(m_i);
     holding_mirror = !holding_mirror;
   }
@@ -278,7 +296,7 @@ void create_beam(vec3 origin, f32 rot, i8 ignored_mirror) {
   while (xz_dist(pos, origin) < closest_mirror_dist) {
     Cell* cell = map_at((u8) pos[0], (u8) pos[2]);
     if (cell->type == WALL) break;
-    if (cell->type == GATE && cell->d.gate.active == 0) break;
+    if (cell->type == GATE && cell->d.gate.offset < 1.5) break;
     if (cell->type == PILLAR) {
       cell->d.pillar.active = 1;
       apply_pillar_lights();
@@ -346,7 +364,16 @@ void place_laser() {
   VEC3_COPY(VEC3(cam.pos[0], 1, cam.pos[2]), target_pos);
   glm_vec3_add(target_pos, front, target_pos);
 
-  if (map_at((u8) target_pos[0], (u8) target_pos[2])->type != EMPTY) return;
+  if (map_at((u8) target_pos[0], (u8) target_pos[2])->type != EMPTY) {
+    laser.valid = 0;
+    VEC3_COPY((vec3) DEEP_RED, mo_laser->material.col);
+    mo_laser->material.alp = 1;
+  }
+  else {
+    laser.valid = 1;
+    VEC3_COPY((vec3) DEEP_PURPLE, mo_laser->material.col);
+    mo_laser->material.alp = 0.2;
+  }
   VEC3_COPY(target_pos, laser.pos);
 
   laser.rot = xz_angle(front);
@@ -362,7 +389,12 @@ void place_mirror() {
   VEC3_COPY(VEC3(cam.pos[0], 0, cam.pos[2]), target_pos);
   glm_vec3_add(target_pos, front, target_pos);
 
-  if (map_at((u8) target_pos[0], (u8) target_pos[2])->type != EMPTY) return;
+  if (map_at((u8) target_pos[0], (u8) target_pos[2])->type != EMPTY) {
+    mirror_valid = 0;
+  }
+  else {
+    mirror_valid = 1;
+  }
   VEC3_COPY(target_pos, mirrors[mirror_c - 1].pos);
 
   mirrors[mirror_c - 1].rot = xz_angle(front) + PI2;
@@ -393,8 +425,6 @@ void char_press(GLFWwindow* window, u32 key) {
     printf("P.X %.2f P.Y %.2f\n", cam.pos[0], cam.pos[2]);
     printf("P.DIR = (%.2f, %.2f, %.2f)\n", cam.dir[0], cam.dir[1], cam.dir[2]);
     printf("P.ROT = %.2f\n", xz_angle(front));
-    for (u8 i = 0; i < mirror_c; i++)
-      printf("mirrors[mirror_c++] = (Mirror) { { %.3f, 0,  %.3f }, %.3f };\n", mirrors[i].pos[0], mirrors[i].pos[2], mirrors[i].rot);
   }
 }
 
@@ -492,12 +522,11 @@ void draw_pillar(u8 x, u8 y, u8 active) {
 }
 
 void draw_laser() {
-  Model* model = holding_laser ? mo_laser : mo_laser;
-  model_bind(model, shader);
-  glm_translate(model->model, VEC3(laser.pos[0], 0, laser.pos[2]));
-  glm_rotate(model->model, laser.rot, VEC3(0, -1, 0));
-  model_draw(model, shader);
-  draw_clickable(shader, model, VEC3(1, 0, 0));
+  model_bind(mo_laser, shader);
+  glm_translate(mo_laser->model, VEC3(laser.pos[0], 0, laser.pos[2]));
+  glm_rotate(mo_laser->model, laser.rot, VEC3(0, -1, 0));
+  model_draw(mo_laser, shader);
+  draw_clickable(shader, mo_laser, VEC3(1, 0, 0));
 }
 
 void draw_beam(u8 i) {
@@ -511,9 +540,12 @@ void draw_beam(u8 i) {
 
 void draw_mirror(Mirror m, u8 i, u8 held) {
   model_bind(mo_mirror, shader);
-  if (held) canvas_uni1f(shader, "MAT.ALP", 0.2);
+  if (held && mirror_valid) canvas_uni1f(shader, "MAT.ALP", 0.2);
+  if (held && !mirror_valid) canvas_uni3f(shader, "MAT.COL", (vec3)DEEP_RED[0], (vec3)DEEP_RED[1], (vec3)DEEP_RED[2]);
+  if (held) glDisable(GL_DEPTH_TEST);
   glm_translate(mo_mirror->model, m.pos);
   glm_rotate(mo_mirror->model, m.rot, VEC3(0, -1, 0));
   model_draw(mo_mirror, shader);
+  glEnable(GL_DEPTH_TEST);
   draw_clickable(shader, mo_mirror, VEC3((f32) 1 / 2, (f32) i / MAX_MIRRORS, 1));
 }

@@ -36,3 +36,6 @@
 - [x] Labyrinth map
 - [x] Solid part on pillars
 - [x] Lamps
+- [ ] Audio
+  - [ ] Grab / place
+  - [ ] Gate
