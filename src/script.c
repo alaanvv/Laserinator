@@ -137,7 +137,7 @@ int main() {
     // ---
 
     generate_proj_mat(&cam, shader);
-    canvas_set_pnt_lig(shader, (PntLig) { WHITE, { cam.pos[0], cam.pos[1], cam.pos[2] }, 1, 0.22, 0.2 }, 0);
+    canvas_set_pnt_lig(shader, (PntLig) { WHITE, { cam.pos[0], cam.pos[1], cam.pos[2] }, 1, 0.22, 0.2, 1000 }, 0);
 
     draw_floor();
     draw_roof();

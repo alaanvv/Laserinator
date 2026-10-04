@@ -15,7 +15,7 @@ struct DirLig {
 
 struct PntLig {
   vec3  COL, POS;
-  float CON, LIN, QUA;
+  float CON, LIN, QUA, RANGE;
 };
 
 struct SptLig {
@@ -55,18 +55,20 @@ vec3 CalcDirLig(DirLig lig, vec3 normal) {
   return ambient + diffuse;
 }
 
-vec3 CalcPntLig(PntLig lig, vec3 normal) {
+vec3 CalcPntLig(PntLig lig, vec3 normal, vec3 dif_col, vec3 emt_col) {
   vec3 light_dir = normalize(lig.POS - pos);
 
   float distance = length(lig.POS - pos);
+  if (distance > lig.RANGE) return vec3(0);
+
   float attenuation = 1 / (lig.CON + lig.LIN * distance + lig.QUA * distance * distance);
 
   vec3 ambient = attenuation * lig.COL * MAT.COL * MAT.AMB;
-  ambient *= vec3(texture(MAT.S_DIF, tex));
-  ambient += vec3(texture(MAT.S_EMT, tex));
+  ambient *= dif_col;
+  ambient += emt_col;
 
-  vec3 diffuse = attenuation * lig.COL * MAT.COL * MAT.DIF * max(dot(normalize(normal), light_dir), 0);
-  diffuse *= vec3(texture(MAT.S_DIF, tex));
+  vec3 diffuse = attenuation * lig.COL * MAT.COL * MAT.DIF * max(dot(normal, light_dir), 0);
+  diffuse *= dif_col;
 
   return ambient + diffuse;
 }
@@ -105,9 +107,14 @@ void main() {
       for (int i = 0; i < DIR_LIG_AMOUNT; i++)
         _color += CalcDirLig(DIR_LIGS[i], nrm);
 
-    if (PNT_LIG_AMOUNT > 0)
-      for (int i = 0; i < PNT_LIG_AMOUNT; i++)
-        _color += CalcPntLig(PNT_LIGS[i], nrm);
+    if (PNT_LIG_AMOUNT > 0) {
+      vec3 dif_col = vec3(texture(MAT.S_DIF, tex));
+      vec3 emt_col = vec3(texture(MAT.S_EMT, tex));
+
+      for (int i = 0; i < PNT_LIG_AMOUNT; i++) {
+        _color += CalcPntLig(PNT_LIGS[i], nrm, dif_col, emt_col);
+      }
+    }
 
     if (SPT_LIG_AMOUNT > 0)
       for (int i = 0; i < SPT_LIG_AMOUNT; i++)

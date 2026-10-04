@@ -547,7 +547,7 @@ typedef struct {
 
 typedef struct {
   vec3 col, pos;
-  f32  con, lin, qua;
+  f32  con, lin, qua, range;
 } PntLig;
 
 typedef struct {
@@ -565,7 +565,9 @@ void canvas_set_dir_lig(u32 shader, DirLig dir_lig, u32 i) {
 }
 
 void canvas_set_pnt_lig(u32 shader, PntLig pnt_lig, u32 i) {
-  canvas_uni1i(shader, "PNT_LIG_AMOUNT", i + 1);
+  static u32 max_i = 0;
+  if (i > max_i) max_i = i;
+  canvas_uni1i(shader, "PNT_LIG_AMOUNT", max_i + 1);
   char uniform[255];
   sprintf(uniform, "PNT_LIGS[%i].COL", i);
   canvas_uni3f(shader, uniform, pnt_lig.col[0], pnt_lig.col[1], pnt_lig.col[2]);
@@ -577,6 +579,8 @@ void canvas_set_pnt_lig(u32 shader, PntLig pnt_lig, u32 i) {
   canvas_uni1f(shader, uniform, pnt_lig.lin);
   sprintf(uniform, "PNT_LIGS[%i].QUA", i);
   canvas_uni1f(shader, uniform, pnt_lig.qua);
+  sprintf(uniform, "PNT_LIGS[%i].RANGE", i);
+  canvas_uni1f(shader, uniform, pnt_lig.range);
 }
 
 void canvas_set_spt_lig(u32 shader, SptLig spt_lig, u32 i) {
